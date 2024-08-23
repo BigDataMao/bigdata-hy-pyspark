@@ -37,8 +37,8 @@ begin
                                                   -1),
                                        'YYYY-MM-DD');
 
-  select min(t.busi_date), max(t.busi_date)
-    into v_begin_date, v_end_date
+  select min(t.busi_date), max(t.busi_date),count(1)
+    into v_begin_date, v_end_date,v_trade_days
     from cf_sett.t_pub_date t
    where substr(t.busi_date, 1, 6) = v_busi_month
      and t.market_no = '1'
