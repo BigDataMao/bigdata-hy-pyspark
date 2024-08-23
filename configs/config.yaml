@@ -1,0 +1,26 @@
+hive:
+  "spark.sql.warehouse.dir": "hdfs://master:9000/user/hive/warehouse"
+  "spark.hadoop.hive.metastore.uris": "thrift://master:9083"
+  "spark.hadoop.hive.exec.scratchdir": "/user/hive/tmp"
+  "hive.exec.dynamic.partition": "true"
+  "hive.exec.dynamic.partition.mode": "nonstrict"
+  "hive.exec.max.dynamic.partitions": "1000"
+  "hive.exec.max.dynamic.partitions.pernode": "500"
+  "spark.default.parallelism": "128"
+  "spark.sql.shuffle.partitions": "128"
+  "spark.debug.maxToStringFields": "256"
+
+oracle:
+  "dsn": "192.168.25.15:1521/WOLF"
+  "user": "wolf"
+  "password": "wolf"
+
+log:
+  "if_count": "false"
+  "log_dir": "/opt/workspace/spark/logs"
+  "log_file_name": "bigdata-hy-pyspark.log"
+  "file_level": "INFO"
+  "console_level": "INFO"
+  "min_level": "INFO"
+  "file_formatter": "%(asctime)s %(name)s %(levelname)s %(message)s [%(filename)s:%(lineno)d]"
+  "console_formatter": "%(asctime)s %(name)s %(levelname)s %(message)s [%(filename)s:%(lineno)d]"
