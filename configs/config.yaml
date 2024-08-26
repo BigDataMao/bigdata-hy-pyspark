@@ -1,4 +1,5 @@
 hive:
+  "spark.master": "spark://master:7077"
   "spark.sql.warehouse.dir": "hdfs://master:9000/user/hive/warehouse"
   "spark.hadoop.hive.metastore.uris": "thrift://master:9083"
   "spark.hadoop.hive.exec.scratchdir": "/user/hive/tmp"
