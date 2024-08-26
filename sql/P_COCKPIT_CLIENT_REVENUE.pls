@@ -10,6 +10,12 @@ create or replace procedure cf_busimg.P_COCKPIT_CLIENT_REVENUE(i_busi_date   in 
   --目前版本:1.0
   --创建时间:20240820
   --版    权:
+  /*
+  202406月测试数据表
+  CF_BUSIMG.T_TEST
+  CF_BUSIMG.T_TEST1
+  CF_BUSIMG.T_TEST2
+  */
   --========================================================================================================================
   v_op_object  VARCHAR2(50) DEFAULT 'P_COCKPIT_CLIENT_REVENUE'; -- '操作对象';
   v_error_msg  VARCHAR2(200); --返回信息
@@ -319,6 +325,7 @@ begin
   利息收入_不含税
   利息收入_增值税及附加
   利息收入_风险金
+  自然日均可用
   */
   execute immediate 'truncate table CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_5';
   insert into CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_5
@@ -367,11 +374,15 @@ begin
   客户结息_不含税
   客户结息_增值税及附加
   客户结息_风险金
+  其他收入
+  其他收入_不含税
+  其他收入增值税及附加
+  其他收入风险金
   客户交返
   客户手续费返还=保留字段，目前值为0
 
   */
-  execute immediate 'truncate table CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_5';
+  execute immediate 'truncate table CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_6';
   insert into CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_6
     (FUND_ACCOUNT_ID,
      TRANSFEE_REWARD_SOFT,
@@ -746,7 +757,9 @@ begin
      RELA_TYPE,
      CSPERSON_NAME,
      FUND_ACCOUNT_ID,
-     CLIENT_NAME)
+     CLIENT_NAME,
+     IS_MAIN--是否主资金账号：1为主账号
+     )
     select v_busi_month,
            c.department_id as BRANCH_ID,
            c.department_nam as BRANCH_NAME,
@@ -764,7 +777,8 @@ begin
                   '-') as rela_type,
            nvl(a2.Broker_Nam, '-') as CSPERSON_NAME,
            a.investor_id as FUND_ACCOUNT_ID,
-           b.investor_nam as CLIENT_NAME
+           b.investor_nam as CLIENT_NAME,
+           row_number() over(partition by a.investor_id order by a.investor_id asc)   as IS_MAIN
       from CTP63.T_DS_ADM_INVESTOR_VALUE a
       join CTP63.T_DS_DC_INVESTOR b
         on a.investor_id = b.investor_id
@@ -823,7 +837,7 @@ begin
                       else
                        0
                     end) as AVG_RIGHTS,
-                sum(t.TODAY_PROFIT) as TOTAL_PROFIT,
+                sum(t.hold_profit+t.close_profit) as TOTAL_PROFIT,
 
                 sum(t.transfee + t.delivery_transfee + t.strikefee) as TRANSFEE,
                 sum(t.market_transfee + t.market_delivery_transfee +
