@@ -4,11 +4,12 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, instr, coalesce, row_number
 
 from src.env.config import Config
-from src.env.task_env import update_dataframe
+from src.env.task_env import update_dataframe, return_to_hive, log
 from src.utils.date_utils import get_date_period_and_days, get_month_str
 from src.utils.logger_uitls import to_color_str
 
 
+@log
 def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     """
     客户创收台账 数据落地
@@ -60,11 +61,11 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     """
 
     logger.info(to_color_str("开始计算交易所返还收入", "green"))
-    tmp = spark.table("ods.t_ds_ret_exchange_retfree2").alias("a") \
+    tmp = spark.table("ods.t_ds_ret_exchange_retfee2").alias("a") \
         .filter(
         (
-            (col("tx_dt").between(v_last_ds_begin_busi_date, v_ds_end_busi_date)) |
-            (col("tx_dt").between(v_ds_begin_busi_date, v_ds_end_busi_date))
+                (col("tx_dt").between(v_last_ds_begin_busi_date, v_ds_end_busi_date)) |
+                (col("tx_dt").between(v_ds_begin_busi_date, v_ds_end_busi_date))
         )
     ).join(
         spark.table("ods.t_ds_dc_org").alias("b"),
@@ -169,20 +170,6 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
                 ).otherwise(0), 4)
         ).alias("ret_fee_amt_dce2"),
         sum(
-            round(
-                when(
-                    col("a.tx_dt") <= v_last_ds_end_busi_date,
-                    col("a.ret_fee_amt_shfe")
-                ).otherwise(0), 4)
-        ).alias("ret_fee_amt_shfe"),
-        sum(
-            round(
-                when(
-                    col("a.tx_dt") <= v_last_ds_end_busi_date,
-                    col("a.ret_fee_amt_shfe1")
-                ).otherwise(0), 4)
-        ).alias("ret_fee_amt_shfe1"),
-        sum(
             col("a.investor_ret_amt")
         ).alias("investor_ret_amt")
     )
@@ -220,24 +207,24 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("busi_date"),
         col("fund_account_id"),
         (
-            col("ret_fee_amt") +
-            col("ret_fee_amt_czce") +
-            col("ret_fee_amt_dce") +
-            col("ret_fee_amt_cffex") +
-            col("ret_fee_amt_cffex2021") +
-            col("ret_fee_amt_shfe") +
-            col("ret_fee_amt_shfe1") +
-            col("ret_fee_amt_dce1") +
-            col("ret_fee_amt_dce2") +
-            col("ret_fee_amt_dce31") +
-            col("ret_fee_amt_dce32") +
-            col("ret_fee_amt_dce33")
+                col("ret_fee_amt") +
+                col("ret_fee_amt_czce") +
+                col("ret_fee_amt_dce") +
+                col("ret_fee_amt_cffex") +
+                col("ret_fee_amt_cffex2021") +
+                col("ret_fee_amt_shfe") +
+                col("ret_fee_amt_shfe1") +
+                col("ret_fee_amt_dce1") +
+                col("ret_fee_amt_dce2") +
+                col("ret_fee_amt_dce31") +
+                col("ret_fee_amt_dce32") +
+                col("ret_fee_amt_dce33")
         ).alias("market_reduct")  # 交易所减收
     ).fillna(0)
 
     # 交易所返还支出
     logger.info(to_color_str("开始计算交易所返还支出", "green"))
-    df_tmp_2 = spark.table("edw.h14_t_fund_jour").alias("a") \
+    df_tmp_2 = spark.table("edw.h14_fund_jour").alias("a") \
         .filter(
         (col("a.fund_type") == "3") &
         (col("a.fund_direct") == "1") &
@@ -286,19 +273,19 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.busi_date").alias("busi_date"),
         col("t.fund_account_id").alias("fund_account_id"),
         (
-            col("t.MARKET_REDUCT") - col("t1.occur_money")
+                col("t.MARKET_REDUCT") - col("t1.occur_money")
         ).alias("market_ret_reduce"),
         (
-            (col("t.MARKET_REDUCT") - col("t1.occur_money")) /
-            (1 + col("c.para_value"))
+                (col("t.MARKET_REDUCT") - col("t1.occur_money")) /
+                (1 + col("c.para_value"))
         ).alias("market_ret_reduce_after_tax"),
         (
-            (col("t.MARKET_REDUCT") - col("t1.occur_money")) *
-            col("d.para_value")
+                (col("t.MARKET_REDUCT") - col("t1.occur_money")) *
+                col("d.para_value")
         ).alias("market_ret_add_tax"),
         (
-            (col("t.MARKET_REDUCT") - col("t1.occur_money")) *
-            col("e.para_value")
+                (col("t.MARKET_REDUCT") - col("t1.occur_money")) *
+                col("e.para_value")
         ).alias("market_ret_risk_fund")
     ).groupBy(
         col("fund_account_id").alias("fund_account_id")
@@ -328,7 +315,8 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("x.oa_branch_id").alias("oa_branch_id")
     ).agg(
         (
-            sum("t.rights") - sum(
+            sum("t.rights") -
+            sum(
                 when(
                     col("t.impawn_money") > col("t.margin"),
                     col("t.impawn_money")
@@ -438,7 +426,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("d"),
         (instr("d.branch_id", "x.oa_branch_id") > 0) &
-        (col("t.date_dt").between("d.begin_date", "d.end_date")) &
+        (regexp_replace(col("t.date_dt"), "-", "").between("d.begin_date", "d.end_date")) &
         (col("d.fee_type") == "1005"),
         "left"
     ).join(
@@ -488,16 +476,16 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).select(
         col("x.fund_account_id").alias("fund_account_id"),
         (
-            col("t.accrued_interest") - col("t1.client_interest_settlement")
+                col("t.accrued_interest") - col("t1.client_interest_settlement")
         ).alias("net_interest_reduce"),
         (
-            col("t.accrued_interest_after_tax") - col("t1.client_interest_after_tax")
+                col("t.accrued_interest_after_tax") - col("t1.client_interest_after_tax")
         ).alias("net_interest_reduce_after_tax"),
         (
-            col("t.accrued_interest_add_tax") - col("t1.client_interest_add_tax")
+                col("t.accrued_interest_add_tax") - col("t1.client_interest_add_tax")
         ).alias("interest_add_tax"),
         (
-            col("t.accrued_interest_risk_fund") - col("t1.client_interest_risk_fund")
+                col("t.accrued_interest_risk_fund") - col("t1.client_interest_risk_fund")
         ).alias("interest_risk_fund")
     ).fillna(0)
 
@@ -562,7 +550,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("a.investor_id") == col("b.investor_id"),
         "inner"
     ).join(
-        spark.table("ods.ts_dc_org").alias("c"),
+        spark.table("ods.t_ds_dc_org").alias("c"),
         col("b.orig_department_id") == col("c.department_id"),
         "inner"
     ).join(
@@ -578,19 +566,19 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("d"),
         (instr("d.branch_id", "x.oa_branch_id") > 0) &
-        (col("a.date_dt").between("d.begin_date", "d.end_date")) &
+        (regexp_replace(col("a.date_dt"), "-", "").between("d.begin_date", "d.end_date")) &
         (col("d.fee_type") == "1004"),  # 增值税税率
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("e"),
         (instr("e.branch_id", "x.oa_branch_id") > 0) &
-        (col("a.date_dt").between("e.begin_date", "e.end_date")) &
+        (regexp_replace(col("a.date_dt"), "-", "").between("e.begin_date", "e.end_date")) &
         (col("e.fee_type") == "1006"),  # 增值税附加税税率
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("f"),
         (instr("f.branch_id", "x.oa_branch_id") > 0) &
-        (col("a.date_dt").between("f.begin_date", "f.end_date")) &
+        (regexp_replace(col("a.date_dt"), "-", "").between("f.begin_date", "f.end_date")) &
         (col("f.fee_type") == "1002"),  # 风险金比例
         "left"
     ).groupBy(
@@ -744,8 +732,8 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("a.investor_id") == col("b.investor_id"),
         "inner"
     ).join(
-        spark.table("ddw.t_ctp_branch_oa_rela").alias("c"),
-        col("b.orig_department_id") == col("c.ctp_branch_id"),
+        spark.table("ods.t_ds_dc_org").alias("c"),
+        col("b.orig_department_id") == col("c.department_id"),
         "inner"
     ).join(
         spark.table("ods.t_ds_adm_brokerdata_detail").alias("a2"),
@@ -778,6 +766,19 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         )
     )
 
+    # 写入结果表,并重新加载,已获得完整的表结构
+    logger.info(to_color_str("开始初始化结果表", "green"))
+    return_to_hive(
+        spark=spark,
+        df_result=df_result,
+        target_table="ddw.t_cockpit_client_revenue",
+        insert_mode="overwrite"
+    )
+
+    df_result = spark.table("ddw.t_cockpit_client_revenue").alias("t").filter(
+        col("t.month_id") == v_busi_month
+    )
+
     """
     期初权益 YES_RIGHTS
     期末权益 END_RIGHTS
@@ -807,7 +808,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         ).alias("end_rights"),
         sum(
             when(
-                v_trade_days > 0,
+                lit(v_trade_days) > 0,
                 col("t.rights") / v_trade_days
             ).otherwise(0)
         ).alias("avg_rights"),
@@ -836,7 +837,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     保障基金 =成交金额*投资者保障基金比例 SECU_FEE
     """
     logger.info(to_color_str("开始merge成交金额", "green"))
-    df_merge_source = spark.table("edw.h15_client_sett").alias("t") \
+    df_merge_source = spark.table("edw.h15_hold_balance").alias("t") \
         .filter(
         col("t.busi_date").between(v_begin_date, v_end_date)
     ).join(
@@ -903,10 +904,10 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.market_ret_client"),
         col("t.transfee_reward_client"),
         (
-            col("t.transfee_reward_client") +
-            col("t.market_ret_client") +
-            col("t.client_interest_settlement")
-        ).alias("total_client_ret"),
+                col("t.transfee_reward_client") +
+                col("t.market_ret_client") +
+                col("t.client_interest_settlement")
+        ).alias("totla_client_ret"),
         col("t.other_income"),
         col("t.other_income_after_tax"),
         col("t.other_income_add_tax"),
@@ -921,7 +922,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
             "transfee_reward_soft", "remain_transfee", "remain_transfee_after_tax",
             "remain_transfee_add_tax", "remain_risk_fund", "interest_base",
             "market_ret", "client_interest_settlement", "market_ret_client",
-            "transfee_reward_client", "total_client_ret", "other_income",
+            "transfee_reward_client", "totla_client_ret", "other_income",
             "other_income_after_tax", "other_income_add_tax", "other_income_risk_fund"
         ]
     )
@@ -1008,12 +1009,20 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     经纪业务总收入=留存手续费+交易所返还+应计利息 TOTAL_INCOME
     """
     logger.info(to_color_str("开始merge经纪业务总收入", "green"))
-    df_merge_source = df_tmp_6.alias("t") \
-        .select(
-        col("t.fund_account_id"),
+    df_merge_source = spark.table("edw.h12_fund_account").alias("x") \
+        .join(
+        df_tmp_6.alias("b"),
+        col("x.fund_account_id") == col("b.fund_account_id"),
+        "left"
+    ).join(
+        df_tmp_5.alias("c"),
+        col("x.fund_account_id") == col("c.fund_account_id"),
+        "left"
+    ).select(
+        col("x.fund_account_id"),
         (
-            col("t.remain_transfee") + col("t.market_ret") +
-            col("t.accrued_interest")
+                col("b.remain_transfee") + col("b.market_ret") +
+                col("c.accrued_interest")
         ).alias("total_income")
     )
 
@@ -1048,19 +1057,19 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).select(
         col("x.fund_account_id").alias("fund_account_id"),
         (
-            col("t.REMAIN_TRANSFEE_AFTER_TAX") +
-            col("t1.MARKET_RET_REDUCE_AFTER_TAX") +
-            col("t2.NET_INTEREST_REDUCE_AFTER_TAX")
+                col("t.REMAIN_TRANSFEE_AFTER_TAX") +
+                col("t1.MARKET_RET_REDUCE_AFTER_TAX") +
+                col("t2.NET_INTEREST_REDUCE_AFTER_TAX")
         ).alias("total_income_after_tax"),  # 经纪业务总净收入_不含税
         (
-            col("t.REMAIN_TRANSFEE_ADD_TAX") +
-            col("t1.MARKET_RET_ADD_TAX") +
-            col("t2.INTEREST_ADD_TAX")
+                col("t.REMAIN_TRANSFEE_ADD_TAX") +
+                col("t1.MARKET_RET_ADD_TAX") +
+                col("t2.INTEREST_ADD_TAX")
         ).alias("total_income_add_tax"),  # 经纪业务增值税及附加
         (
-            col("t.REMAIN_RISK_FUND") +
-            col("t1.MARKET_RET_RISK_FUND") +
-            col("t2.INTEREST_RISK_FUND")
+                col("t.REMAIN_RISK_FUND") +
+                col("t1.MARKET_RET_RISK_FUND") +
+                col("t2.INTEREST_RISK_FUND")
         ).alias("total_income_risk_fund")  # 经纪业务风险金
     )
 
@@ -1159,25 +1168,25 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.cs_person_interest_add_tax").alias("csperson_interest_add_tax"),
         col("t.cs_person_interest_risk_fund").alias("csperson_interest_risk_fund"),
         (
-            col("t.cs_person_rebate") +
-            col("t.cs_person_ret") +
-            col("t.cs_person_interest")
-        ).alias("total_csperson_expend"),
+                col("t.cs_person_rebate") +
+                col("t.cs_person_ret") +
+                col("t.cs_person_interest")
+        ).alias("total_csper_expend"),
         (
-            col("t.cs_person_rebate_after_tax") +
-            col("t.cs_person_ret_after_tax") +
-            col("t.cs_person_interest_after_tax")
-        ).alias("total_csperson_expend_after_tax"),
+                col("t.cs_person_rebate_after_tax") +
+                col("t.cs_person_ret_after_tax") +
+                col("t.cs_person_interest_after_tax")
+        ).alias("total_csper_expend_after_tax"),
         (
-            col("t.cs_person_remain_add_tax") +
-            col("t.cs_person_ret_add_tax") +
-            col("t.cs_person_interest_add_tax")
-        ).alias("total_csperson_expend_add_tax"),
+                col("t.cs_person_remain_add_tax") +
+                col("t.cs_person_ret_add_tax") +
+                col("t.cs_person_interest_add_tax")
+        ).alias("total_csper_expend_add_tax"),
         (
-            col("t.cs_person_remain_risk_fund") +
-            col("t.cs_person_ret_risk_fund") +
-            col("t.cs_person_interest_risk_fund")
-        ).alias("total_csperson_expend_risk_fund"),
+                col("t.cs_person_remain_risk_fund") +
+                col("t.cs_person_ret_risk_fund") +
+                col("t.cs_person_interest_risk_fund")
+        ).alias("total_csper_expend_risk_fund"),
         col("t.ib_rebate").alias("ib_rebate"),
         col("t.ib_rebate_after_tax").alias("ib_rebate_after_tax"),
         col("t.ib_rebate_add_tax").alias("ib_rebate_add_tax"),
@@ -1191,24 +1200,24 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.ib_interest_add_tax").alias("ib_interest_add_tax"),
         col("t.ib_interest_risk_fund").alias("ib_interest_risk_fund"),
         (
-            col("t.ib_rebate") +
-            col("t.ib_ret") +
-            col("t.ib_interest")
+                col("t.ib_rebate") +
+                col("t.ib_ret") +
+                col("t.ib_interest")
         ).alias("total_ib_expend"),
         (
-            col("t.ib_rebate_after_tax") +
-            col("t.ib_ret_after_tax") +
-            col("t.ib_interest_after_tax")
+                col("t.ib_rebate_after_tax") +
+                col("t.ib_ret_after_tax") +
+                col("t.ib_interest_after_tax")
         ).alias("total_ib_expend_after_tax"),
         (
-            col("t.ib_rebate_add_tax") +
-            col("t.ib_ret_add_tax") +
-            col("t.ib_interest_add_tax")
+                col("t.ib_rebate_add_tax") +
+                col("t.ib_ret_add_tax") +
+                col("t.ib_interest_add_tax")
         ).alias("total_ib_expend_add_tax"),
         (
-            col("t.ib_rebate_risk_fund") +
-            col("t.ib_ret_risk_fund") +
-            col("t.ib_interest_risk_fund")
+                col("t.ib_rebate_risk_fund") +
+                col("t.ib_ret_risk_fund") +
+                col("t.ib_interest_risk_fund")
         ).alias("total_ib_expend_risk_fund"),
         col("t.staff_remain_comm").alias("staff_remain_comm"),
         col("t.staff_remain_comm_after_tax").alias("staff_remain_comm_after_tax"),
@@ -1222,29 +1231,33 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.staff_interest_after_tax").alias("staff_interest_after_tax"),
         col("t.staff_interest_add_tax").alias("staff_interest_add_tax"),
         col("t.staff_interest_risk_fund").alias("staff_interest_risk_fund"),
+        col("t.other_pay").alias("other_pay"),
+        col("t.other_pay_after_tax").alias("other_pay_after_tax"),
+        col("t.other_pay_add_tax").alias("other_pay_add_tax"),
+        col("t.other_pay_risk_fund").alias("other_pay_risk_fund"),
         (
-            col("t.staff_remain_comm") +
-            col("t.staff_ret") +
-            col("t.staff_interest") +
-            col("t.other_pay")
+                col("t.staff_remain_comm") +
+                col("t.staff_ret") +
+                col("t.staff_interest") +
+                col("t.other_pay")
         ).alias("total_staff_expend"),
         (
-            col("t.staff_remain_comm_after_tax") +
-            col("t.staff_ret_after_tax") +
-            col("t.staff_interest_after_tax") +
-            col("t.other_pay_after_tax")
+                col("t.staff_remain_comm_after_tax") +
+                col("t.staff_ret_after_tax") +
+                col("t.staff_interest_after_tax") +
+                col("t.other_pay_after_tax")
         ).alias("total_staff_expend_after_tax"),
         (
-            col("t.staff_remain_comm_add_tax") +
-            col("t.staff_ret_add_tax") +
-            col("t.staff_interest_add_tax") +
-            col("t.other_pay_add_tax")
+                col("t.staff_remain_comm_add_tax") +
+                col("t.staff_ret_add_tax") +
+                col("t.staff_interest_add_tax") +
+                col("t.other_pay_add_tax")
         ).alias("total_staff_expend_add_tax"),
         (
-            col("t.staff_remain_comm_risk_fund") +
-            col("t.staff_ret_risk_fund") +
-            col("t.staff_interest_risk_fund") +
-            col("t.other_pay_risk_fund")
+                col("t.staff_remain_comm_risk_fund") +
+                col("t.staff_ret_risk_fund") +
+                col("t.staff_interest_risk_fund") +
+                col("t.other_pay_risk_fund")
         ).alias("total_staff_expend_risk_fund")
     )
 
@@ -1259,8 +1272,8 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
             "csperson_ret_add_tax", "csperson_ret_risk_fund",
             "csperson_interest", "csperson_interest_after_tax",
             "csperson_interest_add_tax", "csperson_interest_risk_fund",
-            "total_csperson_expend", "total_csperson_expend_after_tax",
-            "total_csperson_expend_add_tax", "total_csperson_expend_risk_fund",
+            "total_csper_expend", "total_csper_expend_after_tax",
+            "total_csper_expend_add_tax", "total_csper_expend_risk_fund",
             "ib_rebate", "ib_rebate_after_tax",
             "ib_rebate_add_tax", "ib_rebate_risk_fund",
             "ib_ret", "ib_ret_after_tax",
@@ -1288,7 +1301,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         "net_contribution",
         col("total_income") + col("other_income") -
         col("transfee_reward_soft") - col("secu_fee") -
-        col("total_client_ret") - col("total_csperson_expend") -
+        col("totla_client_ret") - col("total_csper_expend") -
         col("total_ib_expend") - col("total_staff_expend")
     )
 
