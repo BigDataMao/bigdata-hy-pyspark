@@ -6,12 +6,12 @@ import functools
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import lit, col, coalesce, expr, when
 
-from config import *
+from src.env.config import Config
 from src.utils.logger_uitls import to_color_str
 
 config = Config()
 logger = config.get_logger()
-log_config = config.get("log_config")
+log_config = config.get("log")
 is_count = log_config.get("is_count")
 
 hive_config = config.get("hive")
@@ -27,6 +27,8 @@ if hive_config:
     spark_default_parallelism = hive_config.get("spark.default.parallelism")
     spark_sql_shuffle_partitions = hive_config.get("spark.sql.shuffle.partitions")
     spark_debug_max_to_string_fields = hive_config.get("spark.debug.maxToStringFields")
+    spark_sql_execution_logExtendedInfo_enabled = hive_config.get("spark.sql.execution.logExtendedInfo.enabled")
+    spark_sql_crossJoin_enabled = hive_config.get("spark.sql.crossJoin.enabled")
 else:
     logger.error(to_color_str("未找到hive配置信息", "red"))
     raise ValueError("未找到hive配置信息")
@@ -47,6 +49,8 @@ def create_env():
         .config("spark.default.parallelism", spark_default_parallelism) \
         .config("spark.sql.shuffle.partitions", spark_sql_shuffle_partitions) \
         .config("spark.debug.maxToStringFields", spark_debug_max_to_string_fields) \
+        .config("spark.sql.execution.logExtendedInfo.enabled", spark_sql_execution_logExtendedInfo_enabled) \
+        .config("spark.sql.crossJoin.enabled", spark_sql_crossJoin_enabled) \
         .enableHiveSupport() \
         .getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
