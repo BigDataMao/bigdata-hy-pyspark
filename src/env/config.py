@@ -3,11 +3,11 @@
 import logging
 import os
 
-import yaml
-
+from lib import yaml
 from src.utils.path_utils import get_project_path
 
-config_file = get_project_path() + "/configs/config.yaml"
+# config_file = get_project_path() + "/configs/config.yaml"
+config_file = "/opt/workspace/spark/bigdata-hy-pyspark/configs/config.yaml"
 
 
 def load_config(config_path):
@@ -36,7 +36,7 @@ class Config:
         if Config._logger is not None:
             return Config._logger
 
-        log_config = self.get("log_config")
+        log_config = self.get("log")
         log_file_name = log_config.get("log_file_name")
         log_dir = log_config.get("log_dir")
 
