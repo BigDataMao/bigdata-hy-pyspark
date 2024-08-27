@@ -17,7 +17,7 @@ oracle:
   "password": "wolf"
 
 log:
-  "if_count": "false"
+  "is_count": "false"
   "log_dir": "/opt/workspace/spark/logs"
   "log_file_name": "bigdata-hy-pyspark.log"
   "file_level": "INFO"
