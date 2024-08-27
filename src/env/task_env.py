@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import argparse
 import datetime
 import functools
 
@@ -9,8 +10,9 @@ from config import *
 from src.utils.logger_uitls import to_color_str
 
 config = Config()
+logger = config.get_logger()
 log_config = config.get("log_config")
-if_count = log_config.get("if_count")
+is_count = log_config.get("is_count")
 
 hive_config = config.get("hive")
 if hive_config:
@@ -25,6 +27,9 @@ if hive_config:
     spark_default_parallelism = hive_config.get("spark.default.parallelism")
     spark_sql_shuffle_partitions = hive_config.get("spark.sql.shuffle.partitions")
     spark_debug_max_to_string_fields = hive_config.get("spark.debug.maxToStringFields")
+else:
+    logger.error(to_color_str("未找到hive配置信息", "red"))
+    raise ValueError("未找到hive配置信息")
 
 
 # spark入口
@@ -48,6 +53,14 @@ def create_env():
     return spark
 
 
+def parse_args():
+    # 解析命令行所传参数
+    parser = argparse.ArgumentParser()  # 创建解析参数的对象
+    parser.add_argument('--busi_date', help='business date parameter', default=None)  # 添加参数细节
+    args = parser.parse_args()  # 获取参数
+    return args.busi_date
+
+
 def log(func):
     """
     装饰器，用于在函数调用前后打印日志
@@ -58,7 +71,6 @@ def log(func):
     def wrapper(*args, **kwargs):
         func_comment = func.__doc__
         func_name = func.__name__
-        logger = config.get_logger()
 
         begin_time = datetime.datetime.now()
         logger.info("函数 %s 开始执行", func_name)
@@ -102,7 +114,6 @@ def return_to_hive(spark: SparkSession, df_result: DataFrame, target_table, inse
     :return: none
     """
 
-    logger = config.get_logger()
     # 判断是否覆盖写
     if_overwrite = insert_mode == "overwrite"
 
@@ -143,7 +154,7 @@ def return_to_hive(spark: SparkSession, df_result: DataFrame, target_table, inse
 
     logger.info("目标表为: %s", target_table)
     # 记录df_result中的总条数
-    if if_count:
+    if is_count:
         logger.info("正在查询df_result中的总条数......")
         logger.info("本次写入总条数: %s", df_result.count())
     # 插入数据
