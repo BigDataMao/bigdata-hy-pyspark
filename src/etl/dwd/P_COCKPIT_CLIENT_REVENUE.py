@@ -1311,4 +1311,9 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         count = df_result.count()
         logger.info(to_color_str("本次写入总条数为:{}".format(count), "green"))
 
-    df_result.show(10, False)
+    return_to_hive(
+        spark=spark,
+        df_result=df_result,
+        target_table="ddw.t_cockpit_client_revenue",
+        insert_mode="overwrite"
+    )
