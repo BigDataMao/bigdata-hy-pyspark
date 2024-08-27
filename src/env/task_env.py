@@ -101,8 +101,6 @@ def return_to_hive(spark: SparkSession, df_result: DataFrame, target_table, inse
     :param partition_value: 可自定义分区值
     :return: none
     """
-    # 纠错,先清除target_table中的数据 TODO 如果打开这个注释,会清空表中的数据,并且P_COCK_BUSI_ANAL_TARGET_Q_DATA.py会报错
-    # spark.sql("truncate table {}".format(target_table))
 
     logger = config.get_logger()
     # 判断是否覆盖写
