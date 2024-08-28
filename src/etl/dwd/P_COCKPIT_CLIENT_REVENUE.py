@@ -797,7 +797,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         sum(
             when(
                 col("t.busi_date") == v_begin_date,
-                col("t.rights")
+                col("t.yes_rights")
             ).otherwise(0)
         ).alias("yes_rights"),
         sum(
