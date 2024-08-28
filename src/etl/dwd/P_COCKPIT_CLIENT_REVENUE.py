@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from pyspark.sql import SparkSession, Window
-from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, instr, coalesce, row_number
+from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, instr, coalesce, row_number, expr
 
 from src.env.config import Config
 from src.env.task_env import update_dataframe, return_to_hive, log
@@ -24,7 +24,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     v_busi_month = busi_date[:6]
     v_ds_begin_busi_date = busi_date[:4] + "-" + busi_date[4:6] + "-01"
-    v_last_month = get_month_str(busi_date, -1)
+    v_last_month = get_month_str(v_busi_month, -1)
     v_last_ds_begin_busi_date = v_last_month[:4] + "-" + v_last_month[4:6] + "-01"
     v_begin_date, v_end_date, v_trade_days = get_date_period_and_days(
         spark=spark,
@@ -253,21 +253,21 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         "inner"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("c"),
-        (instr("c.branch_id", "x.oa_branch_id") > 0) &
+        expr("instr(c.branch_id, x.oa_branch_id) > 0") &
         (col("c.fee_type") == "1004") &
-        (col("t.busi_date").between("c.begin_date", "c.end_date")),
+        (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))),
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("d"),
-        (instr("d.branch_id", "x.oa_branch_id") > 0) &
+        expr("instr(d.branch_id, x.oa_branch_id) > 0") &
         (col("d.fee_type") == "1005") &
-        (col("t.busi_date").between("d.begin_date", "d.end_date")),
+        (col("t.busi_date").between(col("d.begin_date"), col("d.end_date"))),
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("e"),
-        (instr("e.branch_id", "x.oa_branch_id") > 0) &
+        expr("instr(e.branch_id, x.oa_branch_id) > 0") &
         (col("e.fee_type") == "1002") &
-        (col("t.busi_date").between("e.begin_date", "e.end_date")),
+        (col("t.busi_date").between(col("e.begin_date"), col("e.end_date"))),
         "left"
     ).select(
         col("t.busi_date").alias("busi_date"),
@@ -329,8 +329,8 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         "inner"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("c"),
-        (instr("c.branch_id", "t.oa_branch_id") > 0) &
-        (col("t.busi_date").between("c.begin_date", "c.end_date")) &
+        expr("instr(c.branch_id, t.oa_branch_id) > 0") &
+        (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1001"),
         "left"
     ).groupBy(
@@ -361,20 +361,20 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         "inner"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("c"),
-        (instr("c.branch_id", "x.oa_branch_id") > 0) &
-        (col("t.busi_date").between("c.begin_date", "c.end_date")) &
+        expr("instr(c.branch_id, x.oa_branch_id) > 0") &
+        (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1004"),
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("d"),
-        (instr("d.branch_id", "x.oa_branch_id") > 0) &
-        (col("t.busi_date").between("d.begin_date", "d.end_date")) &
+        expr("instr(d.branch_id, x.oa_branch_id) > 0") &
+        (col("t.busi_date").between(col("d.begin_date"), col("d.end_date"))) &
         (col("d.fee_type") == "1005"),
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("e"),
-        (instr("e.branch_id", "x.oa_branch_id") > 0) &
-        (col("t.busi_date").between("e.begin_date", "e.end_date")) &
+        expr("instr(e.branch_id, x.oa_branch_id) > 0") &
+        (col("t.busi_date").between(col("e.begin_date"), col("e.end_date"))) &
         (col("e.fee_type") == "1002"),
         "left"
     ).groupBy(
@@ -419,20 +419,20 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         "inner"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("c"),
-        (instr("c.branch_id", "x.oa_branch_id") > 0) &
-        (col("t.date_dt").between("c.begin_date", "c.end_date")) &
+        expr("instr(c.branch_id, x.oa_branch_id) > 0") &
+        (regexp_replace(col("t.date_dt"), "-", "").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1004"),
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("d"),
-        (instr("d.branch_id", "x.oa_branch_id") > 0) &
-        (regexp_replace(col("t.date_dt"), "-", "").between("d.begin_date", "d.end_date")) &
+        expr("instr(d.branch_id, x.oa_branch_id) > 0") &
+        (regexp_replace(col("t.date_dt"), "-", "").between(col("d.begin_date"), col("d.end_date"))) &
         (col("d.fee_type") == "1005"),
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("e"),
-        (instr("e.branch_id", "x.oa_branch_id") > 0) &
-        (col("t.date_dt").between("e.begin_date", "e.end_date")) &
+        expr("instr(e.branch_id, x.oa_branch_id) > 0") &
+        (regexp_replace(col("t.date_dt"), "-", "").between(col("e.begin_date"), col("e.end_date"))) &
         (col("e.fee_type") == "1002"),
         "left"
     ).groupBy(
@@ -565,20 +565,20 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         "inner"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("d"),
-        (instr("d.branch_id", "x.oa_branch_id") > 0) &
-        (regexp_replace(col("a.date_dt"), "-", "").between("d.begin_date", "d.end_date")) &
+        expr("instr(d.branch_id, x.oa_branch_id) > 0") &
+        (regexp_replace(col("a.date_dt"), "-", "").between(col("d.begin_date"), col("d.end_date"))) &
         (col("d.fee_type") == "1004"),  # 增值税税率
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("e"),
-        (instr("e.branch_id", "x.oa_branch_id") > 0) &
-        (regexp_replace(col("a.date_dt"), "-", "").between("e.begin_date", "e.end_date")) &
+        expr("instr(e.branch_id, x.oa_branch_id) > 0") &
+        (regexp_replace(col("a.date_dt"), "-", "").between(col("e.begin_date"), col("e.end_date"))) &
         (col("e.fee_type") == "1006"),  # 增值税附加税税率
         "left"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("f"),
-        (instr("f.branch_id", "x.oa_branch_id") > 0) &
-        (regexp_replace(col("a.date_dt"), "-", "").between("f.begin_date", "f.end_date")) &
+        expr("instr(f.branch_id, x.oa_branch_id) > 0") &
+        (regexp_replace(col("a.date_dt"), "-", "").between(col("f.begin_date"), col("f.end_date"))) &
         (col("f.fee_type") == "1002"),  # 风险金比例
         "left"
     ).groupBy(
@@ -846,16 +846,19 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         "inner"
     ).join(
         spark.table("ddw.t_cockpit_00202").alias("c"),
-        (instr("c.branch_id", "x.oa_branch_id") > 0) &
-        (col("t.busi_date").between("c.begin_date", "c.end_date")) &
+        expr("instr(c.branch_id, x.oa_branch_id) > 0") &
+        (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1003"),
         "left"
+    ).withColumn(
+        "tmp_secu_fee",
+        col("t.done_sum") * col("c.para_value")
     ).groupBy(
         col("t.fund_account_id").alias("fund_account_id")
     ).agg(
-        sum(col("t.done_sum")).alias("done_money"),
         sum(col("t.done_amt")).alias("done_amount"),
-        sum(col("t.done_sum") * coalesce(col("c.para_value"), lit(0))).alias("secu_fee")
+        sum(col("t.done_sum")).alias("done_money"),
+        sum(col("tmp_secu_fee")).alias("secu_fee")
     ).fillna(0)
 
     df_result = update_dataframe(
@@ -871,19 +874,19 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     软件使用费  TRANSFEE_REWARD_SOFT
     留存手续费  REMAIN_TRANSFEE
     交易所返还   MARKET_RET
-    
+
     留存手续费_不含税=留存手续费/（1+增值税税率） REMAIN_TRANSFEE_AFTER_TAX
     留存增值税及附加=留存手续费*增值税及附加税税率 REMAIN_TRANSFEE_ADD_TAX
     留存风险金=留存手续费*风险金率  REMAIN_RISK_FUND
-    
+
     利息积数 INTEREST_BASE
-    
+
     客户结息  CLIENT_INTEREST_SETTLEMENT
     客户交返  MARKET_RET_CLIENT
     客户手续费返还 TRANSFEE_REWARD_CLIENT
     客户返还汇总=客户手续费返还+客户交返+客户结息 TOTLA_CLIENT_RET
-    
-    
+
+
     其他收入  OTHER_INCOME
     其他收入_不含税 OTHER_INCOME_AFTER_TAX
     其他收入增值税及附加 OTHER_INCOME_ADD_TAX
@@ -932,7 +935,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     交易所总减免=交易所返还收入-交易所返还支出
     减免返还收入”取自：crm系统的“内核表-投资者交易所返还计算-二次开发”字段“交易所减收”；
     “减免返还支出”取自：crm系统的“客户出入金流水”，筛选字段“资金类型”为公司调整后，取字段“入金金额”
-    
+
     交易所净返还（扣客户交返）=交易所返还收入-交易所返还支出    MARKET_RET_REDUCE
     交易所净返还（扣客户交返）_不含税  MARKET_RET_REDUCE_AFTER_TAX
     交返增值税及附加 MARKET_RET_ADD_TAX
