@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 
 from pyspark.sql.functions import col, min, max, lit, countDistinct
 
+from lib.dateutil.relativedelta import relativedelta
+
 pub_date_table = "edw.t10_pub_date"
 
 
@@ -252,11 +254,15 @@ def get_month_str(busi_month, n=0):
     :param n: 整数, 表示第 n 个月, 默认为 0, 负数表示向前 n 个月, 正数表示向后 n 个月
     :return: 月份字符串, 格式为 'YYYYMM'
     """
-    all_months = int(busi_month[:4]) * 12 + int(busi_month[4:])
-    all_months += n
-    year = all_months // 12
-    month = all_months % 12
-    if month == 0:
-        year -= 1
-        month = 12
-    return '{:04d}{:02d}'.format(year, month)
+    now_date = datetime.strptime(busi_month, '%Y%m')
+    after_date = now_date + relativedelta(months=n)
+    return after_date.strftime('%Y%m')
+
+
+if __name__ == '__main__':
+    print(get_month_str("202101", -1))
+    print(get_month_str("202101", 1))
+    print(get_month_str("202101", 12))
+    print(get_month_str("202101", -12))
+    print(get_month_str("202101", -13))
+    print(get_month_str("202101", 11))

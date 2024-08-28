@@ -1,3 +1,4 @@
 pyspark==2.4.4
 pyspark-stubs==2.4.0.post12
 PyYAML==6.0.1
+python-dateutil==2.9.0
