@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from pyspark.sql import SparkSession, Window
-from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, instr, coalesce, row_number, expr
+from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, coalesce, row_number, expr
 
 from src.env.config import Config
 from src.env.task_env import update_dataframe, return_to_hive, log
@@ -203,7 +203,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).withColumn(
         "order_seq",
         lit(1)
-    ).select(
+    ).fillna(0).select(
         col("busi_date"),
         col("fund_account_id"),
         (
@@ -220,9 +220,9 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
                 col("ret_fee_amt_dce32") +
                 col("ret_fee_amt_dce33")
         ).alias("market_reduct")  # 交易所减收
-    ).fillna(0)
+    )
 
-    # 交易所返还支出
+    # 交易所返还支出 TODO 该条基本上没有记录,为空的df,所以后面的需要coalesce处理occur_money
     logger.info(to_color_str("开始计算交易所返还支出", "green"))
     df_tmp_2 = spark.table("edw.h14_fund_jour").alias("a") \
         .filter(
@@ -273,18 +273,18 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.busi_date").alias("busi_date"),
         col("t.fund_account_id").alias("fund_account_id"),
         (
-                col("t.MARKET_REDUCT") - col("t1.occur_money")
+                col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))
         ).alias("market_ret_reduce"),
         (
-                (col("t.MARKET_REDUCT") - col("t1.occur_money")) /
+                (col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))) /
                 (1 + coalesce(col("c.para_value"), lit(0)))
         ).alias("market_ret_reduce_after_tax"),
         (
-                (col("t.MARKET_REDUCT") - col("t1.occur_money")) *
+                (col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))) *
                 coalesce(col("d.para_value"), lit(0))
         ).alias("market_ret_add_tax"),
         (
-                (col("t.MARKET_REDUCT") - col("t1.occur_money")) *
+                (col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))) *
                 coalesce(col("e.para_value"), lit(0))
         ).alias("market_ret_risk_fund")
     ).groupBy(
