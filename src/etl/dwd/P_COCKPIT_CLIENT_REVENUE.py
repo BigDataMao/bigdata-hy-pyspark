@@ -382,8 +382,8 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).agg(
         sum("t.interest_income").alias("accrued_interest"),
         sum(col("t.interest_income") / (1 + coalesce(col("c.para_value"), lit(0)))).alias("accrued_interest_after_tax"),
-        sum("t.interest_income" * coalesce(col("d.para_value"), lit(0))).alias("accrued_interest_add_tax"),
-        sum("t.interest_income" * coalesce(col("e.para_value"), lit(0))).alias("accrued_interest_risk_fund"),
+        sum(col("t.interest_income") * coalesce(col("d.para_value"), lit(0))).alias("accrued_interest_add_tax"),
+        sum(col("t.interest_income") * coalesce(col("e.para_value"), lit(0))).alias("accrued_interest_risk_fund"),
         sum("t.interest_base").alias("avg_open_pre_nature")
     ).fillna(0)
 
@@ -442,17 +442,17 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum("t.subsistence_fee_amt"), 2).alias("remain_transfee"),
         round(sum("t.exchangeret_amt"), 2).alias("market_ret"),
         round(sum(col("t.subsistence_fee_amt") / (lit(1) + coalesce(col("c.para_value"), lit(0)))), 2).alias("remain_transfee_after_tax"),
-        round(sum("t.subsistence_fee_amt" * coalesce(col("d.para_value"), lit(0))), 2).alias("remain_transfee_add_tax"),
-        round(sum("t.subsistence_fee_amt" * coalesce(col("e.para_value"), lit(0))), 2).alias("remain_risk_fund"),
+        round(sum(col("t.subsistence_fee_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("remain_transfee_add_tax"),
+        round(sum(col("t.subsistence_fee_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("remain_risk_fund"),
         round(sum("t.calint_amt"), 2).alias("interest_base"),
         round(sum("t.i_int_amt"), 2).alias("client_interest_settlement"),
         round(sum(col("t.i_int_amt") / (lit(1) + coalesce(col("c.para_value"), lit(0)))), 2).alias("client_interest_after_tax"),
-        round(sum("t.i_int_amt" * coalesce(col("d.para_value"), lit(0))), 2).alias("client_interest_add_tax"),
-        round(sum("t.i_int_amt" * coalesce(col("e.para_value"), lit(0))), 2).alias("client_interest_risk_fund"),
+        round(sum(col("t.i_int_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("client_interest_add_tax"),
+        round(sum(col("t.i_int_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("client_interest_risk_fund"),
         round(sum("t.oth_amt"), 2).alias("other_income"),
         round(sum(col("t.oth_amt") / (1 + coalesce(coalesce(col("c.para_value"), lit(0)), lit(0)))), 2).alias("other_income_after_tax"),
-        round(sum("t.oth_amt" * coalesce(col("d.para_value"), lit(0))), 2).alias("other_income_add_tax"),
-        round(sum("t.oth_amt" * coalesce(col("e.para_value"), lit(0)))).alias("other_income_risk_fund"),
+        round(sum(col("t.oth_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("other_income_add_tax"),
+        round(sum(col("t.oth_amt") * coalesce(col("e.para_value"), lit(0)))).alias("other_income_risk_fund"),
         round(sum("t.i_exchangeret_amt"), 2).alias("market_ret_client"),
         lit(0).alias("transfee_reward_client")
     ).fillna(0)
@@ -596,16 +596,16 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).agg(
         round(sum("a.broker_amt"), 2).alias("cs_person_rebate"),
         round(sum(col("a.broker_amt") / (1 + coalesce(col("d.para_value"), lit(0)))), 2).alias("cs_person_rebate_after_tax"),
-        round(sum("a.broker_amt" * coalesce(col("e.para_value"), lit(0))), 2).alias("cs_person_remain_add_tax"),
-        round(sum("a.broker_amt" * coalesce(col("f.para_value"), lit(0))), 2).alias("cs_person_remain_risk_fund"),
+        round(sum(col("a.broker_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("cs_person_remain_add_tax"),
+        round(sum(col("a.broker_amt") * coalesce(col("f.para_value"), lit(0))), 2).alias("cs_person_remain_risk_fund"),
         round(sum("a.broker_eret_amt"), 2).alias("cs_person_ret"),
         round(sum(col("a.broker_eret_amt") / (1 + coalesce(col("d.para_value"), lit(0)))), 2).alias("cs_person_ret_after_tax"),
-        round(sum("a.broker_eret_amt" * coalesce(col("e.para_value"), lit(0))), 2).alias("cs_person_ret_add_tax"),
-        round(sum("a.broker_eret_amt" * coalesce(col("f.para_value"), lit(0))), 2).alias("cs_person_ret_risk_fund"),
+        round(sum(col("a.broker_eret_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("cs_person_ret_add_tax"),
+        round(sum(col("a.broker_eret_amt") * coalesce(col("f.para_value"), lit(0))), 2).alias("cs_person_ret_risk_fund"),
         round(sum("a.broker_int_amt"), 2).alias("cs_person_interest"),
         round(sum(col("a.broker_int_amt") / (1 + coalesce(col("d.para_value"), lit(0)))), 2).alias("cs_person_interest_after_tax"),
-        round(sum("a.broker_int_amt" * coalesce(col("e.para_value"), lit(0))), 2).alias("cs_person_interest_add_tax"),
-        round(sum("a.broker_int_amt" * coalesce(col("f.para_value"), lit(0))), 2).alias("cs_person_interest_risk_fund"),
+        round(sum(col("a.broker_int_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("cs_person_interest_add_tax"),
+        round(sum(col("a.broker_int_amt") * coalesce(col("f.para_value"), lit(0))), 2).alias("cs_person_interest_risk_fund"),
         round(sum(
             when(
                 col("a2.staff_id").like("IB%"),
