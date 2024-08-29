@@ -5,7 +5,7 @@ from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, in
 
 from src.env.config import Config
 from src.env.task_env import update_dataframe, return_to_hive, log
-from src.utils.date_utils import get_date_period_and_days, get_month_str
+from src.utils.date_utils import get_date_period_and_days, get_month_str, get_day_last_month
 from src.utils.logger_uitls import to_color_str
 
 
@@ -42,7 +42,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     v_ds_end_busi_date = v_end_busi_date[:4] + "-" + v_end_busi_date[4:6] + "-" + v_end_busi_date[6:8]
 
-    v_last_ds_end_busi_date = v_last_month[:4] + "-" + v_last_month[4:6] + "-" + v_end_busi_date[6:8]
+    v_last_ds_end_busi_date = get_day_last_month(v_end_busi_date, "%Y%m%d", "%Y-%m-%d")
 
     logger.info(
         f"v_busi_month: {v_busi_month}, v_ds_begin_busi_date: {v_ds_begin_busi_date}, "
@@ -277,7 +277,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         ).alias("market_ret_reduce"),
         (
                 (col("t.MARKET_REDUCT") - col("t1.occur_money")) /
-                (1 + col("c.para_value"))
+                (1 + coalesce(col("c.para_value"), lit(0)))
         ).alias("market_ret_reduce_after_tax"),
         (
                 (col("t.MARKET_REDUCT") - col("t1.occur_money")) *
@@ -381,7 +381,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.fund_account_id").alias("fund_account_id")
     ).agg(
         sum("t.interest_income").alias("accrued_interest"),
-        sum(col("t.interest_income") / (1 + col("c.para_value"))).alias("accrued_interest_after_tax"),
+        sum(col("t.interest_income") / (1 + coalesce(col("c.para_value"), lit(0)))).alias("accrued_interest_after_tax"),
         sum("t.interest_income" * col("d.para_value")).alias("accrued_interest_add_tax"),
         sum("t.interest_income" * col("e.para_value")).alias("accrued_interest_risk_fund"),
         sum("t.interest_base").alias("avg_open_pre_nature")
@@ -450,7 +450,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum("t.i_int_amt" * col("d.para_value")), 2).alias("client_interest_add_tax"),
         round(sum("t.i_int_amt" * col("e.para_value")), 2).alias("client_interest_risk_fund"),
         round(sum("t.oth_amt"), 2).alias("other_income"),
-        round(sum(col("t.oth_amt") / (1 + col("c.para_value"))), 2).alias("other_income_after_tax"),
+        round(sum(col("t.oth_amt") / (1 + coalesce(col("c.para_value"), lit(0)))), 2).alias("other_income_after_tax"),
         round(sum("t.oth_amt" * col("d.para_value")), 2).alias("other_income_add_tax"),
         round(sum("t.oth_amt" * col("e.para_value"))).alias("other_income_risk_fund"),
         round(sum("t.i_exchangeret_amt"), 2).alias("market_ret_client"),
@@ -595,15 +595,15 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("a.investor_id").alias("fund_account_id")
     ).agg(
         round(sum("a.broker_amt"), 2).alias("cs_person_rebate"),
-        round(sum(col("a.broker_amt") / (1 + col("d.para_value"))), 2).alias("cs_person_rebate_after_tax"),
+        round(sum(col("a.broker_amt") / (1 + coalesce(col("d.para_value"), lit(0)))), 2).alias("cs_person_rebate_after_tax"),
         round(sum("a.broker_amt" * col("e.para_value")), 2).alias("cs_person_remain_add_tax"),
         round(sum("a.broker_amt" * col("f.para_value")), 2).alias("cs_person_remain_risk_fund"),
         round(sum("a.broker_eret_amt"), 2).alias("cs_person_ret"),
-        round(sum(col("a.broker_eret_amt") / (1 + col("d.para_value"))), 2).alias("cs_person_ret_after_tax"),
+        round(sum(col("a.broker_eret_amt") / (1 + coalesce(col("d.para_value"), lit(0)))), 2).alias("cs_person_ret_after_tax"),
         round(sum("a.broker_eret_amt" * col("e.para_value")), 2).alias("cs_person_ret_add_tax"),
         round(sum("a.broker_eret_amt" * col("f.para_value")), 2).alias("cs_person_ret_risk_fund"),
         round(sum("a.broker_int_amt"), 2).alias("cs_person_interest"),
-        round(sum(col("a.broker_int_amt") / (1 + col("d.para_value"))), 2).alias("cs_person_interest_after_tax"),
+        round(sum(col("a.broker_int_amt") / (1 + coalesce(col("d.para_value"), lit(0)))), 2).alias("cs_person_interest_after_tax"),
         round(sum("a.broker_int_amt" * col("e.para_value")), 2).alias("cs_person_interest_add_tax"),
         round(sum("a.broker_int_amt" * col("f.para_value")), 2).alias("cs_person_interest_risk_fund"),
         round(sum(
@@ -615,7 +615,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum(
             when(
                 col("a2.staff_id").like("IB%"),
-                col("a.broker_amt") / (1 + col("d.para_value"))
+                col("a.broker_amt") / (1 + coalesce(col("d.para_value"), lit(0)))
             ).otherwise(0)
         ), 2).alias("ib_rebate_after_tax"),  # IB返佣_不含税
         round(sum(
@@ -639,7 +639,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum(
             when(
                 col("a2.staff_id").like("IB%"),
-                col("a.broker_eret_amt") / (1 + col("d.para_value"))
+                col("a.broker_eret_amt") / (1 + coalesce(col("d.para_value"), lit(0)))
             ).otherwise(0)
         ), 2).alias("ib_ret_after_tax"),  # IB交返_不含税
         round(sum(
@@ -663,7 +663,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum(
             when(
                 col("a2.staff_id").like("IB%"),
-                col("a.broker_int_amt") / (1 + col("d.para_value"))
+                col("a.broker_int_amt") / (1 + coalesce(col("d.para_value"), lit(0)))
             ).otherwise(0)
         ), 2).alias("ib_interest_after_tax"),  # IB利息_不含税
         round(sum(
@@ -682,7 +682,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
             coalesce(col("a2.ib_amt"), col("a.staff_amt"))
         ), 2).alias("staff_remain_comm"),  # 员工留存提成
         round(sum(
-            coalesce(col("a2.ib_amt"), col("a.staff_amt")) / (1 + col("d.para_value"))
+            coalesce(col("a2.ib_amt"), col("a.staff_amt")) / (1 + coalesce(col("d.para_value"), lit(0)))
         ), 2).alias("staff_remain_comm_after_tax"),  # 员工留存提成_不含税
         round(sum(
             coalesce(col("a2.ib_amt"), col("a.staff_amt")) * col("e.para_value")
@@ -694,7 +694,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
             col("a.staff_eret_amt")
         ), 2).alias("staff_ret"),  # 员工交返
         round(sum(
-            col("a.staff_eret_amt") / (1 + col("d.para_value"))
+            col("a.staff_eret_amt") / (1 + coalesce(col("d.para_value"), lit(0)))
         ), 2).alias("staff_ret_after_tax"),  # 员工交返_不含税
         round(sum(
             col("a.staff_eret_amt") * col("e.para_value")
@@ -706,7 +706,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
             coalesce(col("a2.staff_int_amt"), col("a.staff_int_amt"))
         ), 2).alias("staff_interest"),  # 员工利息
         round(sum(
-            coalesce(col("a2.staff_int_amt"), col("a.staff_int_amt")) / (1 + col("d.para_value"))
+            coalesce(col("a2.staff_int_amt"), col("a.staff_int_amt")) / (1 + coalesce(col("d.para_value"), lit(0)))
         ), 2).alias("staff_interest_after_tax"),  # 员工利息_不含税
         round(sum(
             coalesce(col("a2.staff_int_amt"), col("a.staff_int_amt")) * col("e.para_value")
@@ -715,7 +715,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
             coalesce(col("a2.staff_int_amt"), col("a.staff_int_amt")) * col("f.para_value")
         ), 2).alias("staff_interest_risk_fund"),  # 员工利息风险金
         round(sum("a.i_oth_amt"), 2).alias("other_pay"),  # 其他支出
-        round(sum(col("a.i_oth_amt") / (1 + col("d.para_value"))), 2).alias("other_pay_after_tax"),  # 其他支出_不含税
+        round(sum(col("a.i_oth_amt") / (1 + coalesce(col("d.para_value"), lit(0)))), 2).alias("other_pay_after_tax"),  # 其他支出_不含税
         round(sum(col("a.i_oth_amt") * col("e.para_value")), 2).alias("other_pay_add_tax"),  # 其他支出增值税附加税
         round(sum(col("a.i_oth_amt") * col("f.para_value")), 2).alias("other_pay_risk_fund")  # 其他支出风险金
     ).fillna(0)
