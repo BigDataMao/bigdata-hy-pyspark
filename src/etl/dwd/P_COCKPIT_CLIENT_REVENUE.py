@@ -338,11 +338,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.fund_account_id").alias("fund_account_id")
     ).agg(
         sum("t.interest_base").alias("interest_base"),
-        sum(
-            round(
-                col("t.interest_base") * coalesce(col("c.para_value"), lit(0)) / 360, 2
-            )
-        ).alias("interest_income")
+        (sum(col("t.interest_base") * coalesce(col("c.para_value"), lit(0))) / 360).alias("interest_income")
     ).fillna(0)
 
     # 利息收入
