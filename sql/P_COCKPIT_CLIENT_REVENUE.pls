@@ -591,56 +591,56 @@ begin
            round(sum(a.broker_int_amt * nvl(e.para_value, 0)), 2) as CSPERSON_INTEREST_ADD_TAX, --居间利息增值税附加税
            round(sum(a.broker_int_amt * nvl(f.para_value, 0)), 2) as CSPERSON_INTEREST_RISK_FUND, --居间利息风险金
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_amt
                        ELSE
                         0
                      END),
                  2) AS IB_REBATE, --IB返佣
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_amt / (1 + nvl(d.para_value, 0))
                        ELSE
                         0
                      END),
                  2) AS IB_REBATE_AFTER_TAX, --IB返佣_不含税
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_amt * nvl(e.para_value, 0)
                        ELSE
                         0
                      END),
                  2) AS IB_REBATE_ADD_TAX, --IB留存增值税附加税
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_amt * nvl(f.para_value, 0)
                        ELSE
                         0
                      END),
                  2) AS IB_REBATE_RISK_FUND, --IB留存风险金
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_eret_amt
                        ELSE
                         0
                      END),
                  2) as IB_RET, -- IB交返
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_eret_amt / (1 + nvl(d.para_value, 0))
                        ELSE
                         0
                      END),
                  2) as IB_RET_AFTER_TAX, -- IB交返_不含税
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_eret_amt * nvl(e.para_value, 0)
                        ELSE
                         0
                      END),
                  2) as IB_RET_ADD_TAX, -- IB交返增值税附加税
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_eret_amt * nvl(f.para_value, 0)
                        ELSE
                         0
@@ -648,28 +648,28 @@ begin
                  2) as IB_RET_RISK_FUND, -- IB交返风险金
 
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_int_amt
                        ELSE
                         0
                      END),
                  2) as IB_INTEREST, -- IB利息
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_int_amt / (1 + nvl(d.para_value, 0))
                        ELSE
                         0
                      END),
                  2) as IB_INTEREST_AFTER_TAX, -- IB利息_不含税
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_int_amt * nvl(e.para_value, 0)
                        ELSE
                         0
                      END),
                  2) as IB_INTEREST_ADD_TAX, -- IB利息增值税附加税
            round(sum(CASE
-                       WHEN A2.STAFF_ID LIKE 'IB%' THEN
+                       WHEN A2.STAFF_ID LIKE 'ZD%' THEN
                         a.broker_int_amt * nvl(f.para_value, 0)
                        ELSE
                         0
