@@ -259,6 +259,32 @@ def get_month_str(busi_month, n=0):
     return after_date.strftime('%Y%m')
 
 
+def get_day_last_month(busi_date: str, format_str="%Y%m%d"):
+    """
+    获取给定日期往前推一个月,如果是月末,则返回上个月的月末
+    :param busi_date: 日期字符串, 格式可选, 默认为 'YYYYMMDD'
+    :param format_str: 日期格式字符串, 默认为 '%Y%m%d'
+    :return: 日期字符串, 格式为 'YYYYMMDD'
+    """
+    # 将字符串日期转换为datetime对象
+    date_obj = datetime.strptime(busi_date, format_str)
+
+    # 使用relativedelta减去一个月份
+    # 注意：这可能会把月底的日期变成下个月的同一天（但日期较小）
+    # 因此，我们需要检查并调整
+    last_month_date = date_obj - relativedelta(months=1)
+
+    # 获取上个月的最后一天
+    # 这可以通过将上个月的日期加一天，然后减去一天来实现（利用dateutil的rollforward功能会更复杂）
+    # 但更简单的方法是使用calendar模块，或者我们直接计算
+    # 这里我们选择直接计算：找到上个月的最后一天（即下个月第一天的前一天）
+    next_month_first_day = last_month_date.replace(day=1) + relativedelta(months=1)
+    last_day_of_last_month = next_month_first_day - timedelta(days=1)
+
+    # 将日期对象转换回字符串格式
+    return last_day_of_last_month.strftime(format_str)
+
+
 if __name__ == '__main__':
     print(get_month_str("202101", -1))
     print(get_month_str("202101", 1))
@@ -266,3 +292,5 @@ if __name__ == '__main__':
     print(get_month_str("202101", -12))
     print(get_month_str("202101", -13))
     print(get_month_str("202101", 11))
+
+    print(get_day_last_month("20240531"))
