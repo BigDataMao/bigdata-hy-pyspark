@@ -294,3 +294,4 @@ if __name__ == '__main__':
     print(get_month_str("202101", 11))
 
     print(get_day_last_month("20240531"))
+    print(get_day_last_month("2024-06-30", "%Y-%m-%d"))
