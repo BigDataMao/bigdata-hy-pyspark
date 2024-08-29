@@ -1302,10 +1302,14 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     logger.info(to_color_str("开始计算净贡献", "green"))
     df_result = df_result.withColumn(
         "net_contribution",
-        col("total_income") + col("other_income") -
-        col("transfee_reward_soft") - col("secu_fee") -
-        col("totla_client_ret") - col("total_csper_expend") -
-        col("total_ib_expend") - col("total_staff_expend")
+        coalesce(col("total_income"), lit(0)) +
+        coalesce(col("other_income"), lit(0)) -
+        coalesce(col("transfee_reward_soft"), lit(0)) -
+        coalesce(col("secu_fee"), lit(0)) -
+        coalesce(col("totla_client_ret"), lit(0)) -
+        coalesce(col("total_csper_expend"), lit(0)) -
+        coalesce(col("total_ib_expend"), lit(0)) -
+        coalesce(col("total_staff_expend"), lit(0))
     )
 
     logger.info(to_color_str("全部计算结束,开始写入hive", "green"))
