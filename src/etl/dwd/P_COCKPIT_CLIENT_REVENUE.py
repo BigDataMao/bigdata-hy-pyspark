@@ -1060,19 +1060,19 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).select(
         col("x.fund_account_id").alias("fund_account_id"),
         (
-                col("t.REMAIN_TRANSFEE_AFTER_TAX") +
-                col("t1.MARKET_RET_REDUCE_AFTER_TAX") +
-                col("t2.NET_INTEREST_REDUCE_AFTER_TAX")
+                coalesce(col("t.REMAIN_TRANSFEE_AFTER_TAX"), lit(0)) +
+                coalesce(col("t1.MARKET_RET_REDUCE_AFTER_TAX"), lit(0)) +
+                coalesce(col("t2.NET_INTEREST_REDUCE_AFTER_TAX"), lit(0))
         ).alias("total_income_after_tax"),  # 经纪业务总净收入_不含税
         (
-                col("t.REMAIN_TRANSFEE_ADD_TAX") +
-                col("t1.MARKET_RET_ADD_TAX") +
-                col("t2.INTEREST_ADD_TAX")
+                coalesce(col("t.REMAIN_TRANSFEE_ADD_TAX"), lit(0)) +
+                coalesce(col("t1.MARKET_RET_ADD_TAX"), lit(0)) +
+                coalesce(col("t2.INTEREST_ADD_TAX"), lit(0))
         ).alias("total_income_add_tax"),  # 经纪业务增值税及附加
         (
-                col("t.REMAIN_RISK_FUND") +
-                col("t1.MARKET_RET_RISK_FUND") +
-                col("t2.INTEREST_RISK_FUND")
+                coalesce(col("t.REMAIN_RISK_FUND"), lit(0)) +
+                coalesce(col("t1.MARKET_RET_RISK_FUND"), lit(0)) +
+                coalesce(col("t2.INTEREST_RISK_FUND"), lit(0))
         ).alias("total_income_risk_fund")  # 经纪业务风险金
     )
 
