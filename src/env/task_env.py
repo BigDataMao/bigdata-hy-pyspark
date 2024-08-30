@@ -15,44 +15,19 @@ log_config = config.get("log")
 is_count = log_config.get("is_count")
 
 hive_config = config.get("hive")
-if hive_config:
-    spark_master = hive_config.get("spark.master")
-    spark_sql_warehouse_dir = hive_config.get("spark.sql.warehouse.dir")
-    spark_hadoop_hive_metastore_uris = hive_config.get("spark.hadoop.hive.metastore.uris")
-    spark_hadoop_hive_exec_scratchdir = hive_config.get("spark.hadoop.hive.exec.scratchdir")
-    hive_exec_dynamic_partition = hive_config.get("hive.exec.dynamic.partition")
-    hive_exec_dynamic_partition_mode = hive_config.get("hive.exec.dynamic.partition.mode")
-    hive_exec_max_dynamic_partitions = hive_config.get("hive.exec.max.dynamic.partitions")
-    hive_exec_max_dynamic_partitions_pernode = hive_config.get("hive.exec.max.dynamic.partitions.pernode")
-    spark_default_parallelism = hive_config.get("spark.default.parallelism")
-    spark_sql_shuffle_partitions = hive_config.get("spark.sql.shuffle.partitions")
-    spark_debug_max_to_string_fields = hive_config.get("spark.debug.maxToStringFields")
-    spark_sql_execution_logExtendedInfo_enabled = hive_config.get("spark.sql.execution.logExtendedInfo.enabled")
-    spark_sql_crossJoin_enabled = hive_config.get("spark.sql.crossJoin.enabled")
-else:
+if not hive_config:
     logger.error(to_color_str("未找到hive配置信息", "red"))
     raise ValueError("未找到hive配置信息")
 
 
 # spark入口
 def create_env():
-    spark = SparkSession.builder \
+    builder = SparkSession.builder \
         .appName("HiveTest") \
-        .config("spark.master", spark_master) \
-        .config("spark.sql.warehouse.dir", spark_sql_warehouse_dir) \
-        .config("spark.hadoop.hive.metastore.uris", spark_hadoop_hive_metastore_uris) \
-        .config("spark.hadoop.hive.exec.scratchdir", spark_hadoop_hive_exec_scratchdir) \
-        .config("hive.exec.dynamic.partition", hive_exec_dynamic_partition) \
-        .config("hive.exec.dynamic.partition.mode", hive_exec_dynamic_partition_mode) \
-        .config("hive.exec.max.dynamic.partitions", hive_exec_max_dynamic_partitions) \
-        .config("hive.exec.max.dynamic.partitions.pernode", hive_exec_max_dynamic_partitions_pernode) \
-        .config("spark.default.parallelism", spark_default_parallelism) \
-        .config("spark.sql.shuffle.partitions", spark_sql_shuffle_partitions) \
-        .config("spark.debug.maxToStringFields", spark_debug_max_to_string_fields) \
-        .config("spark.sql.execution.logExtendedInfo.enabled", spark_sql_execution_logExtendedInfo_enabled) \
-        .config("spark.sql.crossJoin.enabled", spark_sql_crossJoin_enabled) \
-        .enableHiveSupport() \
-        .getOrCreate()
+        .enableHiveSupport()
+    for k, v in hive_config.items():
+        builder.config(k, v)
+    spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
     return spark
 
@@ -158,7 +133,7 @@ def return_to_hive(spark: SparkSession, df_result: DataFrame, target_table, inse
 
     logger.info("目标表为: %s", target_table)
     # 记录df_result中的总条数
-    if is_count:
+    if is_count == "true":
         logger.info("正在查询df_result中的总条数......")
         logger.info("本次写入总条数: %s", df_result.count())
     # 插入数据
