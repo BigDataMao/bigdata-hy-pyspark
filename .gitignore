@@ -1,3 +1,5 @@
 
 /venv/
 /.idea/
+/lib/
+!/lib/__init__.py
