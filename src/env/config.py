@@ -6,7 +6,7 @@ import os
 from lib import yaml
 from src.utils.path_utils import get_project_path
 
-# config_file = get_project_path() + "/configs/config.yaml"
+# config_file = get_project_path() + "/configs/config.yaml" TODO: Fix this
 config_file = "/opt/workspace/spark/bigdata-hy-pyspark/configs/config.yaml"
 
 
