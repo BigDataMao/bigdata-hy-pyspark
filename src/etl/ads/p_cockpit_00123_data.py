@@ -3,7 +3,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit
 from pyspark.sql.types import StringType
 
-from src.env.task_env import log
+from src.env.task_env import log, return_to_hive
 from src.utils.udf import f_get_multi_key_note
 
 
@@ -56,4 +56,9 @@ def p_cockpit_00123_data(spark: SparkSession, busi_date: str):
         ).alias("alloca_income")
     )
 
-    df_result.show(5, truncate=True)
+    return_to_hive(
+        spark=spark,
+        df_result=df_result,
+        target_table="ddw.t_cockpit_00123",
+        insert_mode="overwrite"
+    )

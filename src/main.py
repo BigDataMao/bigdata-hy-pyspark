@@ -5,6 +5,8 @@ from src.etl.ads.p_cockpit_00123_data import p_cockpit_00123_data
 from src.etl.ads.p_cockpit_00124_data import p_cockpit_00124_data
 from src.etl.ads.p_cockpit_00128_data import p_cockpit_00128_data
 from src.etl.ads.p_cockpit_00140_data import p_cockpit_00140_data
+from src.etl.ads.p_cockpit_00156_data import p_cockpit_00156_data
+from src.etl.ads.p_cockpit_00208_data import p_cockpit_00208_data
 from src.etl.dwd.P_COCKPIT_CLIENT_REVENUE import p_cockpit_client_revenue
 
 busi_date = parse_args()
