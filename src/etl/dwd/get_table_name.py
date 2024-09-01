@@ -42,5 +42,7 @@ if __name__ == "__main__":
     # 打印分类后的表名
     for category, tables in categorized_tables.items():
         print(f"Category: {category}")
-        for table in set(tables):  # 去重后打印
+        # 去重并排序
+        sorted_tables = sorted(set(tables))
+        for table in sorted_tables:  # 去重后打印
             print(f"    {table}")
