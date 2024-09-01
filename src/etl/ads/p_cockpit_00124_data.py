@@ -78,7 +78,7 @@ def p_cockpit_00124_data(spark: SparkSession, busi_date: str):
     return_to_hive(
         spark=spark,
         df_result=df_result,
-        target_table="ddw.t_cockpit_00124_data",
+        target_table="ddw.t_cockpit_00124",
         insert_mode="overwrite"
     )
 
