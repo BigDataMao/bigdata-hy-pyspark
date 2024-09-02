@@ -47,7 +47,7 @@ def p_cockpit_00114_data(spark: SparkSession, busi_date: str):
     ).select(
         lit(busi_date).alias("busi_date"),
         col("t.fund_account_id"),  # 资金账号
-        col("b.client_name"),  # 客户名称
+        col("t.client_name"),  # 客户名称
         col("t.end_rights"),  # 期末权益
         col("t.remain_transfee"),  # 留存手续费
         col("a.fund_rate"),  # 比例
