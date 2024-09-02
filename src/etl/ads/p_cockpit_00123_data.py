@@ -39,7 +39,7 @@ def p_cockpit_00123_data(spark: SparkSession, busi_date: str):
         col("t.product_type"),  # 产品类型
         col("t.product_risk_level"),  # 产品风险等级
         col("t.client_risk_level"),  # 客户风险等级
-        udf_get_multi_key_note(col("t.product_risk_level"), lit("report.wh_risk_level")).alias("client_risk_level_name"),  # 产品风险等级名称
+        udf_get_multi_key_note(col("t.client_risk_level"), lit("report.wh_risk_level")).alias("client_risk_level_name"),  # 产品风险等级名称
         col("t.contract_begin_date"),  # 合同开始时间
         col("t.contract_end_date"),  # 合同结束时间
         col("t.collection_time"),  # 收款时间
