@@ -42,6 +42,7 @@ def p_cockpit_00161_data(spark: SparkSession, busi_date: str):
         col("t.branch_name").alias("undertake_dept"),
         col("a.account_code"),
         col("a.account_name"),
+        col("d.para_value"),
         lit(sys_date).alias("allocated_date"),
         col("a.func_name").alias("allocated_project"),
         lit(None).alias("allocated_peoject_detail")
