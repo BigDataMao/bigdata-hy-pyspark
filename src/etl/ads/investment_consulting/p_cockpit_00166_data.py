@@ -11,7 +11,7 @@ from src.env.task_env import log, return_to_hive
 @log
 def p_cockpit_00166_data(spark: SparkSession, busi_date: str):
     """
-    溯源表模板_投资咨询内核表 -数据落地 TODO 原sql字符串拼接,瞎搞
+    溯源表模板_投资咨询内核表 -数据落地
     :param spark: SparkSession对象
     :param busi_date: 业务日期 yyyyMMdd
     :return: None
@@ -50,17 +50,18 @@ def p_cockpit_00166_data(spark: SparkSession, busi_date: str):
         col("a.account_name").alias("account_name"),
         col("t.contract_number").alias("contract_number"),
         col("a.func_name").alias("allocated_project"),
-        col("c.para_value").alias("allocated_money"),
-        col("d.para_value").alias("allocated_date"),
         lit(sys_date).alias("allocated_date"),
-        concat(lit("合同编号"), col("contract_number")).alias("allocated_peoject_detail")
+        concat(lit("合同编号"), col("contract_number")).alias("allocated_peoject_detail"),
+        lit("admin").alias("allocated_user"),
+        col("c.para_value"),
+        col("d.para_value"),
     ).agg(
         when(
             col("a.account_code") == "6021",
-            sum(col("t.alloc_income")) / (lit(1) + coalesce(col("c.para_value"), lit(0)))
+            sum(col("t.alloca_income")) / (lit(1) + coalesce(col("c.para_value"), lit(0)))
         ).when(
             col("a.account_code") == "6403",
-            sum(col("t.alloc_income")) / (lit(1) + coalesce(col("d.para_value"), lit(0))) * col("d.para_value")
+            sum(col("t.alloca_income")) / (lit(1) + coalesce(col("c.para_value"), lit(0))) * col("d.para_value")
         ).otherwise(lit(0)).alias("allocated_money")
     )
 
