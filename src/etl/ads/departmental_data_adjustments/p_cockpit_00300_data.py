@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import os
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit, coalesce, sum, concat, when
@@ -17,43 +18,42 @@ def p_cockpit_00300_data(spark: SparkSession, busi_date: str):
     """
 
     v_month_id = busi_date[:6]
-    v_op_object = "P_COCKPIT_00165_DATA"
+    v_op_object = os.path.splitext(os.path.basename(__file__))[0].upper()
     sys_date = datetime.datetime.now().strftime("%Y%m%d")
 
     df_result = spark.table("ddw.t_cockpit_00114_data").alias("t") \
         .filter(
-        col("t.busi_month").substr(1, 6) == v_month_id
+        col("t.busi_date").substr(1, 6) == v_month_id
     ).groupBy(
-        col("t.busi_month").substr(1, 6).alias("month_id"),
+        col("t.busi_date").substr(1, 6).alias("month_id"),
         col("t.out_oa_branch_id").alias("traceability_dept_id"),
         col("t.out_oa_branch_name").alias("traceability_dept"),
         col("t.in_oa_branch_id").alias("UNDERTAKE_DEPT_ID"),
         col("t.in_oa_branch_name").alias("undertake_dept")
     ).agg(
-        sum(col("allocat_remain_transfee")).alias("allocated_money")
+        sum(col("allocat_remain_transfee")).alias("allocat_remain_transfee")
     ).alias("t").crossJoin(
         spark.table("ddw.t_cockpit_acount_func_rela").alias("a")
     ).filter(
-        (col("month_id") == v_month_id) &
-        (col("func_id") == v_op_object)
-    ).join(
-        spark.table("ddw.t_cockpit_00202").alias("b"),
-        (col("b.fee_type") == "1002") &
-        (lit(busi_date) >= col("b.begin_date")) &
-        (lit(busi_date) <= col("b.end_date")),
-        "inner"
-    ).join(
-        spark.table("ddw.t_cockpit_00202").alias("c"),
-        (col("c.fee_type") == "1004") &
-        (lit(busi_date) >= col("c.begin_date")) &
-        (lit(busi_date) <= col("c.end_date")),
-        "inner"
-    ).join(
-        spark.table("ddw.t_cockpit_00202").alias("e"),
-        (col("e.fee_type") == "1005") &
-        (lit(busi_date) >= col("e.begin_date")) &
-        (lit(busi_date) <= col("e.end_date")),
-        "inner"
+        col("a.func_id") == v_op_object
+    ).crossJoin(
+        spark.table("ddw.t_cockpit_00202").alias("b").filter(
+            (col("b.fee_type") == "1002") &
+            (lit(busi_date) >= col("b.begin_date")) &
+            (lit(busi_date) <= col("b.end_date")),
+        )
+    ).crossJoin(
+        spark.table("ddw.t_cockpit_00202").alias("c").filter(
+            (col("c.fee_type") == "1004") &
+            (lit(busi_date) >= col("c.begin_date")) &
+            (lit(busi_date) <= col("c.end_date")),
+        )
+    ).crossJoin(
+        spark.table("ddw.t_cockpit_00202").alias("e").filter(
+            (col("e.fee_type") == "1005") &
+            (lit(busi_date) >= col("e.begin_date")) &
+            (lit(busi_date) <= col("e.end_date")),
+        )
     ).select(
         col("t.month_id"),
         col("t.traceability_dept_id"),
