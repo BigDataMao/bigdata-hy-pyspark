@@ -1,4 +1,4 @@
-CREATE OR REPLACE PROCEDURE cf_busimg.p_cockpit_00114_data(i_busi_date   IN VARCHAR2,
+CREATE OR REPLACE PROCEDURE CF_BUSIMG.p_cockpit_00114_data(i_busi_date   IN VARCHAR2,
                                                            o_return_msg  OUT VARCHAR2, --返回消息
                                                            o_return_code OUT INTEGER --返回代码
                                                            ) IS
@@ -16,8 +16,8 @@ CREATE OR REPLACE PROCEDURE cf_busimg.p_cockpit_00114_data(i_busi_date   IN VARC
   ---------------------------------------------------------------------------------------
   --固定变量
   ---------------------------------------------------------------------------------------
-  v_op_object VARCHAR2(50) DEFAULT 'P_COCKPIT_00114_DATA'; -- '操作对象';
-  v_error_msg VARCHAR2(200); --返回信息
+  v_op_object  VARCHAR2(50) DEFAULT 'P_COCKPIT_00114_DATA'; -- '操作对象';
+  v_error_msg  VARCHAR2(200); --返回信息
   v_error_code INTEGER;
   v_userexception EXCEPTION;
   ---------------------------------------------------------------------------------------
@@ -25,7 +25,7 @@ CREATE OR REPLACE PROCEDURE cf_busimg.p_cockpit_00114_data(i_busi_date   IN VARC
   ---------------------------------------------------------------------------------------
 BEGIN
   DELETE FROM cf_busimg.t_cockpit_00114_data t
-  WHERE  t.busi_date = i_busi_date;
+   WHERE t.busi_date = i_busi_date;
   COMMIT;
   INSERT INTO cf_busimg.t_cockpit_00114_data
     (busi_date,
@@ -47,14 +47,13 @@ BEGIN
              t.transfee + t.delivery_transfee + t.strikefee -
              t.market_transfee - t.market_delivery_transfee -
              t.market_strikefee AS remain_transfee --留存手续费
-      FROM   cf_sett.t_client_sett t
-      INNER  JOIN cf_busimg.t_cockpit_00114 a ON t.fund_account_id =
-                                                 a.fund_account_id
-                                                 AND i_busi_date BETWEEN
-                                                 a.begin_date AND a.end_date
-      INNER  JOIN cf_sett.t_fund_account b ON a.fund_account_id =
-                                              b.fund_account_id
-      WHERE  t.busi_date = i_busi_date)
+        FROM cf_sett.t_client_sett t
+       INNER JOIN cf_busimg.t_cockpit_00114 a
+          ON t.fund_account_id = a.fund_account_id
+         AND i_busi_date BETWEEN a.begin_date AND a.end_date
+       INNER JOIN cf_sett.t_fund_account b
+          ON a.fund_account_id = b.fund_account_id
+       WHERE t.busi_date = i_busi_date)
     SELECT i_busi_date,
            t.fund_account_id, --资金账号
            t.client_name, --客户名称
@@ -67,53 +66,43 @@ BEGIN
            a.in_oa_branch_name, --划入部门
            (t.end_rights * a.fund_rate) AS allocat_end_rights, --分配期末权益
            (t.remain_transfee * a.fund_rate) AS allocat_remain_transfee --分配留存手续费
-    FROM   tmp t
-    INNER  JOIN cf_busimg.t_cockpit_00114 a ON t.fund_account_id =
-                                               a.fund_account_id;
+      FROM tmp t
+     INNER JOIN cf_busimg.t_cockpit_00114 a
+        ON t.fund_account_id = a.fund_account_id;
   COMMIT;
   -------------------------------------------------------------
   o_return_code := 0;
-  o_return_msg := '执行成功';
+  o_return_msg  := '执行成功';
   ---------------------------------------------------------------------------------------
   --错误处理部分
   ---------------------------------------------------------------------------------------
 EXCEPTION
   WHEN v_userexception THEN
     o_return_code := v_error_code;
-    o_return_msg := v_error_msg;
+    o_return_msg  := v_error_msg;
     ROLLBACK;
-    wolf.p_error_log('admin'
-                    , -- '操作人';
-                     v_op_object
-                    , -- '操作对象';
-                     v_error_code
-                    , --'错误代码';
-                     v_error_msg
-                    , -- '错误信息';
-                     ''
-                    ,'1'
-                    ,o_return_msg
-                    , --返回信息
+    wolf.p_error_log('admin', -- '操作人';
+                     v_op_object, -- '操作对象';
+                     v_error_code, --'错误代码';
+                     v_error_msg, -- '错误信息';
+                     '',
+                     '1',
+                     o_return_msg, --返回信息
                      o_return_code --返回值 0 成功必须返回；-1 失败
                      );
   WHEN OTHERS THEN
     o_return_code := SQLCODE;
-    o_return_msg := o_return_msg || SQLERRM;
+    o_return_msg  := o_return_msg || SQLERRM;
     ROLLBACK;
-    v_error_msg := o_return_msg;
+    v_error_msg  := o_return_msg;
     v_error_code := o_return_code;
-    wolf.p_error_log('admin'
-                    , -- '操作人';
-                     v_op_object
-                    , -- '操作对象';
-                     v_error_code
-                    , --'错误代码';
-                     v_error_msg
-                    , -- '错误信息';
-                     ''
-                    ,'2'
-                    ,o_return_msg
-                    , --返回信息
+    wolf.p_error_log('admin', -- '操作人';
+                     v_op_object, -- '操作对象';
+                     v_error_code, --'错误代码';
+                     v_error_msg, -- '错误信息';
+                     '',
+                     '2',
+                     o_return_msg, --返回信息
                      o_return_code --返回值 0 成功必须返回；-1 失败
                      );
 END;
