@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, coalesce
+from pyspark.sql.functions import col, sum
 
 from src.env.task_env import return_to_hive, log
 
@@ -25,18 +25,14 @@ def p_cockpit_00128_data(spark: SparkSession, busi_date: str):
         spark.table("ddw.t_ctp_branch_oa_rela").alias("x"),
         col("t.branch_id") == col("x.ctp_branch_id"),
         "inner"
-    ).select(
-        col("t.month_id"),  # 月份
-        col("t.branch_id"),  # 部门ID
-        col("x.oa_branch_id"),  # 部门
-        col("t.done_money"),  # 成交金额
-        col("t.secu_fee").alias("bzjj")
     ).groupBy(
-        col("t.month_id"), col("t.branch_id"), col("x.oa_branch_id")
+        col("t.month_id").alias("month_id"),
+        col("t.branch_id").alias("ctp_branch_id"),
+        col("x.oa_branch_id").alias("oa_branch_id"),
     ).agg(
-        lit("0").alias("done_money"),
-        lit("0").alias("bzjj")
-    )
+        sum(col("t.done_money")).alias("done_money"),  # 成交金额
+        sum(col("t.secu_fee")).alias("bzjj"),  # 保证基金
+    ).fillna(0)
 
     return_to_hive(
         spark=spark,
