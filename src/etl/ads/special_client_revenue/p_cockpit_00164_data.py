@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 import datetime
+import os
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, coalesce, regexp_replace, when, sum, round, concat
+from pyspark.sql.functions import col, lit, coalesce, when, sum
 
-from src.env.config import Config
 from src.env.task_env import return_to_hive, log
-from src.utils.date_utils import get_month_str, get_date_period_and_days, get_day_last_month
-from src.utils.logger_uitls import to_color_str
 
 
 @log
@@ -20,7 +18,7 @@ def p_cockpit_00164_data(spark: SparkSession, busi_date: str):
     """
 
     v_month_id = busi_date[:6]
-    v_op_object = "P_COCKPIT_00165_DATA"
+    v_op_object = os.path.splitext(os.path.basename(__file__))[0].upper()
     sys_date = datetime.datetime.now().strftime("%Y%m%d")
 
     df_result = spark.table("ddw.t_cockpit_00156").alias("t") \
