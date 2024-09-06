@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import os
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit, sum, concat
@@ -17,7 +18,7 @@ def p_cockpit_00165_data(spark: SparkSession, busi_date: str):
     """
 
     v_month_id = busi_date[:6]
-    v_op_object = "P_COCKPIT_00165_DATA"
+    v_op_object = os.path.splitext(os.path.basename(__file__))[0].upper()
     sys_date = datetime.datetime.now().strftime("%Y%m%d")
 
     df_result = spark.table("ddw.t_cockpit_00128_data").crossJoin(
@@ -30,17 +31,18 @@ def p_cockpit_00165_data(spark: SparkSession, busi_date: str):
         col("t.ctp_branch_id") == col("x.ctp_branch_id"),
         "inner"
     ).groupBy(
-        col("t.month_id").alias("busi_month"),
+        col("t.month_id").alias("month_id"),
         col("t.traceability_dept_id").alias("traceability_dept_id"),
         col("t.traceability_dept").alias("traceability_dept"),
         col("t.oa_branch_id").alias("UNDERTAKE_DEPT_ID"),
         col("x.oa_branch_name").alias("undertake_dept"),
         col("t.account_code").alias("ACCOUNT_CODE"),
-        col("t.account_name").alias("ACCOUNT_NAME")
+        col("t.account_name").alias("ACCOUNT_NAME"),
+        lit("admin").alias("ALLOCATED_USER"),  # 默认admin
     ).agg(
         sum(col("bzjj")).alias("allocated_money"),
         lit(sys_date).alias("allocated_date"),
-        concat(v_month_id, col("t.account_name")).alias("allocated_project"),
+        concat(lit(v_month_id), col("t.account_name")).alias("allocated_project"),
         lit(None).alias("allocated_peoject_detail")
     )
 
