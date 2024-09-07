@@ -19,19 +19,18 @@ def p_cockpit_00140_data(spark: SparkSession, busi_date: str):
 
     df_result = spark.table("ddw.t_cockpit_client_revenue").alias("t") \
         .filter(
-        (col("t.month_id") == v_month_id) &
-        (col("t.is_main") == "1")
+        col("t.month_id") == v_month_id
     ).join(
         spark.table("ods.t_ds_crm_broker_investor_rela").alias("a"),
         (col("t.oa_broker_id") == col("a.broker_id")) &
         (col("t.fund_account_id") == col("a.investor_id")) &
         (
                 col("t.rela_type") ==
-                when(col("a.broker_rela_typ") == "301", "居间关系")
-                .when(col("a.broker_rela_typ") == "001", "开发关系")
-                .when(col("a.broker_rela_typ") == "002", "服务关系")
-                .when(col("a.broker_rela_typ") == "003", "维护关系")
-                .otherwise("-")),
+                when(col("a.broker_rela_typ") == "301", lit("居间关系"))
+                .when(col("a.broker_rela_typ") == "001", lit("开发关系"))
+                .when(col("a.broker_rela_typ") == "002", lit("服务关系"))
+                .when(col("a.broker_rela_typ") == "003", lit("维护关系"))
+                .otherwise(lit("-"))),
         "left"
     ).filter(
         (col("a.broker_id").like("ZD%")) &
