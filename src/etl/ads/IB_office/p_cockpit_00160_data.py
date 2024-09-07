@@ -21,52 +21,6 @@ def p_cockpit_00160_data(spark: SparkSession, busi_date: str):
     v_op_object = os.path.splitext(os.path.basename(__file__))[0].upper()
     sys_date = datetime.datetime.now().strftime("%Y%m%d")
 
-    """
-      v_sql := 'insert into CF_BUSIMG.T_COCKPIT_00160
-    (month_id,
-     traceability_dept_id,
-     traceability_dept,
-     undertake_dept_id,
-     undertake_dept,
-     account_code,
-     account_name,
-     allocated_money,
-     allocated_date,
-     allocated_project,
-     allocated_peoject_detail)
-    select t.month_id,
-           a.traceability_dept_id,
-           a.traceability_dept,
-           t.ctp_branch_id,
-           t.ctp_branch_name,
-           a.account_code,
-           a.account_name,' || v_sql_text ||
-               'to_char(sysdate,''yyyymmdd''),
-           a.func_name as allocated_project,
-           null
-      from cf_busimg.T_COCKPIT_00140 t,
-           cf_busimg.t_cockpit_acount_func_rela a,
-           CF_BUSIMG.T_COCKPIT_00202 c,
-           CF_BUSIMG.T_COCKPIT_00202 d
-     where t.month_id = ' || v_month_id ||
-               ' and a.func_id = ''' || v_op_object || '''
-        and a.account_code = ' || x.account_code ||
-               'and c.fee_type = ''1004''
-       and ' || i_busi_date || ' between c.begin_date and c.end_date
-       and d.fee_type = ''1006''
-       and ' || i_busi_date || ' between d.begin_date and d.end_date
-     group by t.month_id,
-              a.traceability_dept_id,
-              a.traceability_dept,
-              t.ctp_branch_id,
-              t.ctp_branch_name,
-              a.account_code,
-              a.account_name,
-              a.func_name,
-              c.para_value,
-              d.para_value ';
-    """
-
     df_result = spark.table("ddw.t_cockpit_00140").alias("t") \
         .filter(
         col("t.month_id") == v_month_id
@@ -97,6 +51,7 @@ def p_cockpit_00160_data(spark: SparkSession, busi_date: str):
         lit(sys_date).alias("allocated_date"),
         col("a.func_name").alias("allocated_project"),
         lit(None).alias("allocated_peoject_detail"),
+        lit("admin").alias("allocated_user"),  # 默认admin
         col("c.para_value"),
         col("d.para_value")
     ).agg(
