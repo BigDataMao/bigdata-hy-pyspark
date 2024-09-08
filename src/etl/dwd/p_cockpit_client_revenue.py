@@ -26,6 +26,8 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     v_ds_begin_busi_date = busi_date[:4] + "-" + busi_date[4:6] + "-01"
     v_last_month = get_month_str(v_busi_month, -1)
     v_last_ds_begin_busi_date = v_last_month[:4] + "-" + v_last_month[4:6] + "-01"
+
+    # TODO 以下两段耗时过高,交易日表一年不变数据量不大,应该作为项目常量
     v_begin_date, v_end_date, v_trade_days = get_date_period_and_days(
         spark=spark,
         begin_month=v_busi_month,
@@ -54,6 +56,13 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     # 2. 业务逻辑
 
+    # 先缓存基础数据
+    df_investor = spark.table("ods.t_ds_dc_investor").cache()  # 缓存
+    df_org = spark.table("ods.t_ds_dc_org").cache()  # 缓存
+    df_oa_rela = spark.table("ddw.t_ctp_branch_oa_rela").cache()  # 缓存
+    df_202 = spark.table("ddw.t_cockpit_00202").cache()  # 缓存
+    df_fund_account = spark.table("edw.h12_fund_account").cache()  # 缓存
+
     # 2.1 基础数据
     """
     交易所返还收入
@@ -68,10 +77,10 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
                 (col("tx_dt").between(v_ds_begin_busi_date, v_ds_end_busi_date))
         )
     ).join(
-        spark.table("ods.t_ds_dc_org").alias("b"),
+        df_org.alias("b"),
         col("a.orig_department_id") == col("b.department_id")
     ).join(
-        spark.table("ods.t_ds_dc_investor").alias("ff"),
+        df_investor.alias("ff"),
         col("a.investor_id") == col("ff.investor_id")
     ).groupBy(
         col("a.investor_id").alias("fund_account_id"),
@@ -244,27 +253,27 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         (col("t.busi_date") == col("t1.busi_date")),
         "left"
     ).join(
-        spark.table("edw.h12_fund_account").alias("t2"),
+        df_fund_account.alias("t2"),
         col("t.fund_account_id") == col("t2.fund_account_id"),
         "left"
     ).join(
-        spark.table("ddw.t_ctp_branch_oa_rela").alias("x"),
+        df_oa_rela.alias("x"),
         col("t2.branch_id") == col("x.ctp_branch_id"),
         "inner"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("c"),
+        df_202.alias("c"),
         expr("instr(c.branch_id, x.oa_branch_id) > 0") &
         (col("c.fee_type") == "1004") &
         (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))),
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("d"),
+        df_202.alias("d"),
         expr("instr(d.branch_id, x.oa_branch_id) > 0") &
         (col("d.fee_type") == "1005") &
         (col("t.busi_date").between(col("d.begin_date"), col("d.end_date"))),
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("e"),
+        df_202.alias("e"),
         expr("instr(e.branch_id, x.oa_branch_id) > 0") &
         (col("e.fee_type") == "1002") &
         (col("t.busi_date").between(col("e.begin_date"), col("e.end_date"))),
@@ -302,11 +311,11 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         .filter(
         (col("t.busi_date").between(v_begin_date, v_end_date))
     ).join(
-        spark.table("edw.h12_fund_account").alias("t2"),
+        df_fund_account.alias("t2"),
         col("t.fund_account_id") == col("t2.fund_account_id"),
         "left"
     ).join(
-        spark.table("ddw.t_ctp_branch_oa_rela").alias("x"),
+        df_oa_rela.alias("x"),
         col("t2.branch_id") == col("x.ctp_branch_id"),
         "inner"
     ).groupBy(
@@ -328,7 +337,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("t.busi_date") == col("b.busi_date"),
         "inner"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("c"),
+        df_202.alias("c"),
         expr("instr(c.branch_id, t.oa_branch_id) > 0") &
         (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1001"),
@@ -348,27 +357,27 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     # 自然日均可用
     logger.info(to_color_str("开始计算利息收入", "green"))
     df_tmp_5 = df_tmp_4.alias("t").join(
-        spark.table("edw.h12_fund_account").alias("t2"),
+        df_fund_account.alias("t2"),
         col("t.fund_account_id") == col("t2.fund_account_id"),
         "left"
     ).join(
-        spark.table("ddw.t_ctp_branch_oa_rela").alias("x"),
+        df_oa_rela.alias("x"),
         col("t2.branch_id") == col("x.ctp_branch_id"),
         "inner"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("c"),
+        df_202.alias("c"),
         expr("instr(c.branch_id, x.oa_branch_id) > 0") &
         (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1004"),
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("d"),
+        df_202.alias("d"),
         expr("instr(d.branch_id, x.oa_branch_id) > 0") &
         (col("t.busi_date").between(col("d.begin_date"), col("d.end_date"))) &
         (col("d.fee_type") == "1005"),
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("e"),
+        df_202.alias("e"),
         expr("instr(e.branch_id, x.oa_branch_id) > 0") &
         (col("t.busi_date").between(col("e.begin_date"), col("e.end_date"))) &
         (col("e.fee_type") == "1002"),
@@ -406,27 +415,27 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         .filter(
         col("t.date_dt") == v_ds_begin_busi_date
     ).join(
-        spark.table("ods.t_ds_dc_investor").alias("b"),
+        df_investor.alias("b"),
         col("t.investor_id") == col("b.investor_id"),
         "inner"
     ).join(
-        spark.table("ddw.t_ctp_branch_oa_rela").alias("x"),
+        df_oa_rela.alias("x"),
         col("b.orig_department_id") == col("x.ctp_branch_id"),
         "inner"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("c"),
+        df_202.alias("c"),
         expr("instr(c.branch_id, x.oa_branch_id) > 0") &
         (regexp_replace(col("t.date_dt"), "-", "").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1004"),
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("d"),
+        df_202.alias("d"),
         expr("instr(d.branch_id, x.oa_branch_id) > 0") &
         (regexp_replace(col("t.date_dt"), "-", "").between(col("d.begin_date"), col("d.end_date"))) &
         (col("d.fee_type") == "1005"),
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("e"),
+        df_202.alias("e"),
         expr("instr(e.branch_id, x.oa_branch_id) > 0") &
         (regexp_replace(col("t.date_dt"), "-", "").between(col("e.begin_date"), col("e.end_date"))) &
         (col("e.fee_type") == "1002"),
@@ -460,7 +469,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     利息风险金  INTEREST_RISK_FUND
     """
     logger.info(to_color_str("开始计算净利息收入", "green"))
-    df_tmp_7 = spark.table("edw.h12_fund_account").alias("x") \
+    df_tmp_7 = df_fund_account.alias("x") \
         .join(
         df_tmp_5.alias("t"),
         col("x.fund_account_id") == col("t.fund_account_id"),
@@ -542,11 +551,11 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         .filter(
         col("a.date_dt") == v_ds_begin_busi_date
     ).join(
-        spark.table("ods.t_ds_dc_investor").alias("b"),
+        df_investor.alias("b"),
         col("a.investor_id") == col("b.investor_id"),
         "inner"
     ).join(
-        spark.table("ods.t_ds_dc_org").alias("c"),
+        df_org.alias("c"),
         col("b.orig_department_id") == col("c.department_id"),
         "inner"
     ).join(
@@ -556,23 +565,23 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         (col("a2.rec_freq") == "M"),
         "left"
     ).join(
-        spark.table("ddw.t_ctp_branch_oa_rela").alias("x"),
+        df_oa_rela.alias("x"),
         col("b.orig_department_id") == col("x.ctp_branch_id"),
         "inner"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("d"),
+        df_202.alias("d"),
         expr("instr(d.branch_id, x.oa_branch_id) > 0") &
         (regexp_replace(col("a.date_dt"), "-", "").between(col("d.begin_date"), col("d.end_date"))) &
         (col("d.fee_type") == "1004"),  # 增值税税率
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("e"),
+        df_202.alias("e"),
         expr("instr(e.branch_id, x.oa_branch_id) > 0") &
         (regexp_replace(col("a.date_dt"), "-", "").between(col("e.begin_date"), col("e.end_date"))) &
         (col("e.fee_type") == "1006"),  # 增值税附加税税率
         "left"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("f"),
+        df_202.alias("f"),
         expr("instr(f.branch_id, x.oa_branch_id) > 0") &
         (regexp_replace(col("a.date_dt"), "-", "").between(col("f.begin_date"), col("f.end_date"))) &
         (col("f.fee_type") == "1002"),  # 风险金比例
@@ -724,11 +733,11 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         .filter(
         col("a.date_dt") == v_ds_begin_busi_date
     ).join(
-        spark.table("ods.t_ds_dc_investor").alias("b"),
+        df_investor.alias("b"),
         col("a.investor_id") == col("b.investor_id"),
         "inner"
     ).join(
-        spark.table("ods.t_ds_dc_org").alias("c"),
+        df_org.alias("c"),
         col("b.orig_department_id") == col("c.department_id"),
         "inner"
     ).join(
@@ -837,11 +846,11 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         .filter(
         col("t.busi_date").between(v_begin_date, v_end_date)
     ).join(
-        spark.table("ddw.t_ctp_branch_oa_rela").alias("x"),
+        df_oa_rela.alias("x"),
         col("t.branch_id") == col("x.ctp_branch_id"),
         "inner"
     ).join(
-        spark.table("ddw.t_cockpit_00202").alias("c"),
+        df_202.alias("c"),
         expr("instr(c.branch_id, x.oa_branch_id) > 0") &
         (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))) &
         (col("c.fee_type") == "1003"),
@@ -1008,7 +1017,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     经纪业务总收入=留存手续费+交易所返还+应计利息 TOTAL_INCOME
     """
     logger.info(to_color_str("开始merge经纪业务总收入", "green"))
-    df_merge_source = spark.table("edw.h12_fund_account").alias("x") \
+    df_merge_source = df_fund_account.alias("x") \
         .join(
         df_tmp_6.alias("b"),
         col("x.fund_account_id") == col("b.fund_account_id"),
@@ -1040,7 +1049,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     TOTAL_INCOME_RISK_FUND 经纪业务风险金=[留存手续费+交易所净返还（扣客户交返）+净利息收入（扣客户结息）]*风险金比例
     """
     logger.info(to_color_str("开始merge经纪业务总净收入", "green"))
-    df_merge_source = spark.table("edw.h12_fund_account").alias("x") \
+    df_merge_source = df_fund_account.alias("x") \
         .join(
         df_tmp_6.alias("t"),
         col("x.fund_account_id") == col("t.fund_account_id"),
