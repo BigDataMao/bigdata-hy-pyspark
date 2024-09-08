@@ -157,26 +157,20 @@ def update_dataframe(df_to_update, df_use_me, join_columns, update_columns, filt
     join_condition = " and ".join(["a.{} = b.{}".format(column, column) for column in join_columns])
     df_result = df_to_update.join(df_use_me, expr(join_condition), "left")
 
-    for column in update_columns:
-        new_col_name = column + "_new"
-        df_result = df_result.withColumn(
-            new_col_name,
-            when(
-                expr(join_condition) &
-                expr(filter_condition) if filter_condition else lit(True),
+    # 创建更新表达式
+    selection_expr = []
+    for column in df_to_update.columns:
+        if column in update_columns:
+            updated_column = when(
+                expr(join_condition) & (expr(filter_condition) if filter_condition else lit(True)),
                 coalesce(col("b." + column), col("a." + column))
-            ).otherwise(col("a." + column))
-        )
-        df_result = df_result.drop(column)
-        df_result = df_result.withColumnRenamed(new_col_name, column)
+            ).otherwise(col("a." + column)).alias(column)
+            selection_expr.append(updated_column)
+        else:
+            selection_expr.append(col("a." + column))  # 保留未更新的列
 
-    # 提取出原属于df_to_update的列
-    df_result = df_result.select(
-        [col("a.*")] +
-        [col(c) for c in update_columns]
-    )
-
-    return df_result
+    # 提取结果，避免重复列
+    return df_result.select(*selection_expr)
 
 
 def update_dataframe_ai(df_to_update, df_use_me, join_columns, update_columns, filter_condition=None):
