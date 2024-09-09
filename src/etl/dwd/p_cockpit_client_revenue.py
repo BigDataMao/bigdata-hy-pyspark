@@ -59,7 +59,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     df_org = spark.table("ods.t_ds_dc_org").cache()  # 缓存
     df_oa_rela = spark.table("ddw.t_ctp_branch_oa_rela").cache()  # 缓存
     df_202 = spark.table("ddw.t_cockpit_00202").cache()  # 缓存
-    df_fund_account = spark.table("edw.h12_fund_account").cache()  # 缓存
+    df_fund_account = spark.table("edw.h12_fund_account").select("fund_account_id", "branch_id").cache()  # 缓存
 
     # 2.1 基础数据
     """
