@@ -5,8 +5,7 @@ from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, co
 
 from src.env.config import Config
 from src.env.task_env import update_dataframe, return_to_hive, log
-from src.utils.date_utils import get_date_period_and_days, get_month_str, get_day_last_month, \
-    get_date_period_and_days_old
+from src.utils.date_utils import get_date_period_and_days, get_month_str, get_day_last_month
 from src.utils.logger_uitls import to_color_str
 
 
@@ -770,18 +769,26 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         )
     )
 
-    # 写入结果表,并重新加载,已获得完整的表结构
-    logger.info(to_color_str("开始初始化结果表", "green"))
-    return_to_hive(
-        spark=spark,
-        df_result=df_result,
-        target_table="ddw.t_cockpit_client_revenue",
-        insert_mode="overwrite"
-    )
+    # # 写入结果表,并重新加载,已获得完整的表结构
+    # logger.info(to_color_str("开始初始化结果表", "green"))
+    # return_to_hive(
+    #     spark=spark,
+    #     df_result=df_result,
+    #     target_table="ddw.t_cockpit_client_revenue",
+    #     insert_mode="overwrite"
+    # )
+    #
+    # df_result = spark.table("ddw.t_cockpit_client_revenue").alias("t").filter(
+    #     col("t.month_id") == v_busi_month
+    # )
 
-    df_result = spark.table("ddw.t_cockpit_client_revenue").alias("t").filter(
-        col("t.month_id") == v_busi_month
-    )
+    # df_result不具备ddw.t_cockpit_client_revenue完整的表结构,需要读取ddw.t_cockpit_client_revenue的schema
+
+    result_columns = df_result.schema.names
+    revenue_columns = spark.table("ddw.t_cockpit_client_revenue").columns
+    select_exprs = [col(col_name).alias(col_name) for col_name in result_columns] + \
+        [lit(None).alias(col_name) for col_name in revenue_columns if col_name not in result_columns]
+    df_result = df_result.select(*select_exprs)
 
     """
     期初权益 YES_RIGHTS
