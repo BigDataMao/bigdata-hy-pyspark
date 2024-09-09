@@ -3,19 +3,21 @@ hive:
   "spark.sql.warehouse.dir": "hdfs://master:9000/user/hive/warehouse"
   "spark.hadoop.hive.metastore.uris": "thrift://master:9083"
   "spark.hadoop.hive.exec.scratchdir": "/user/hive/tmp"
+  "spark.eventLog.enabled": "true"
+  "spark.eventLog.dir": "hdfs://master:9000/spark-history"
   "hive.exec.dynamic.partition": "true"
   "hive.exec.dynamic.partition.mode": "nonstrict"
   "hive.exec.max.dynamic.partitions": "1000"
   "hive.exec.max.dynamic.partitions.pernode": "500"
   "spark.dynamicAllocation.initialExecutors": "3"
-  "spark.dynamicAllocation.minExecutors": "3"
+  "spark.dynamicAllocation.minExecutors": "3"  # 最小executor数量,小数据量下,提高数量毫无意义.
   "spark.dynamicAllocation.maxExecutors": "12"
-  "spark.executor.memory": "32G"
-  "spark.executor.cores": "24"
+  "spark.executor.memory": "16G"
+  "spark.executor.cores": "8"  # 每个executor的核数, 小数据量下,提高数量毫无意义.
   "spark.default.parallelism": "128"
-  "spark.sql.shuffle.partitions": "128"
+  "spark.sql.shuffle.partitions": "8"  # 在本项目中,设置为8,因为数据量不大.设置小一些,显著提高性能.
   "spark.debug.maxToStringFields": "600"
-  "spark.sql.execution.logExtendedInfo.enabled": "false"  # 是否打印执行计划,TODO 设置失效.
+  "spark.sql.execution.logExtendedInfo.enabled": "true"  # 是否打印执行计划
   "spark.sql.crossJoin.enabled": "true"  # 是否允许笛卡尔积
 
 oracle:
