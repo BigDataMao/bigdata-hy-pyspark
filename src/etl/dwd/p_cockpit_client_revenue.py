@@ -5,7 +5,8 @@ from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, co
 
 from src.env.config import Config
 from src.env.task_env import update_dataframe, return_to_hive, log
-from src.utils.date_utils import get_date_period_and_days, get_month_str, get_day_last_month
+from src.utils.date_utils import get_date_period_and_days, get_month_str, get_day_last_month, \
+    get_date_period_and_days_old
 from src.utils.logger_uitls import to_color_str
 
 
@@ -29,15 +30,13 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     # TODO 以下两段耗时过高,交易日表一年不变数据量不大,应该作为项目常量
     v_begin_date, v_end_date, v_trade_days = get_date_period_and_days(
-        spark=spark,
-        begin_month=v_busi_month,
+        busi_month=v_busi_month,
         begin_date='19000101',  # 1900-01-01,基于开始日期和结束日期进行过滤,所以这里设置为最小日期
         end_date=busi_date,
         is_trade_day=True
     )
 
     v_end_busi_date = get_date_period_and_days(
-        spark=spark,
         busi_month=v_busi_month,
         is_trade_day=False
     )[1]

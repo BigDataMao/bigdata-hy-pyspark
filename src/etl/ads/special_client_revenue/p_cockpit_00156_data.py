@@ -27,7 +27,6 @@ def p_cockpit_00156_data(spark: SparkSession, busi_date: str):
     v_last_month = get_month_str(v_busi_month, -1)
     v_last_ds_begin_busi_date = v_last_month[:4] + "-" + v_last_month[4:6] + "-01"
     v_begin_date, v_end_date, v_trade_days = get_date_period_and_days(
-        spark=spark,
         begin_month=v_busi_month,
         begin_date='19000101',  # 1900-01-01,基于开始日期和结束日期进行过滤,所以这里设置为最小日期
         end_date=busi_date,
@@ -35,7 +34,6 @@ def p_cockpit_00156_data(spark: SparkSession, busi_date: str):
     )
 
     v_end_busi_date = get_date_period_and_days(
-        spark=spark,
         busi_month=v_busi_month,
         is_trade_day=False
     )[1]

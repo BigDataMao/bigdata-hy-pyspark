@@ -1,4 +1,4 @@
-pub_date = {
+pub_dates = {
     "20190101": {
         "TRADE_FLAG": "0",
         "BUSI_DATE_NATURE": "20181228"

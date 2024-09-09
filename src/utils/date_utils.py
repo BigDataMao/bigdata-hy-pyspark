@@ -5,14 +5,15 @@
 """
 from datetime import datetime, timedelta
 
-from pyspark.sql.functions import col, min, max, lit, countDistinct
+import pyspark.sql.functions as F
 
+from data.dictionaries.pub_date import pub_dates
 from lib.dateutil.relativedelta import relativedelta
 
 pub_date_table = "edw.t10_pub_date"
 
 
-def get_date_period_and_days(
+def get_date_period_and_days_old(
         spark,
         begin_date=None,
         end_date=None,
@@ -36,41 +37,41 @@ def get_date_period_and_days(
     """
     # 基于开始和结束日期进行过滤
     if begin_date and end_date:
-        date_filter = (col("busi_date").between(begin_date, end_date))
+        date_filter = (F.col("busi_date").between(begin_date, end_date))
     elif begin_date:
-        date_filter = (col("busi_date") >= begin_date)
+        date_filter = (F.col("busi_date") >= begin_date)
     elif end_date:
-        date_filter = (col("busi_date") <= end_date)
+        date_filter = (F.col("busi_date") <= end_date)
     else:
-        date_filter = lit(True)
+        date_filter = F.lit(True)
 
     # 基于开始和结束月份进行过滤
     if begin_month and end_month:
         month_range_filter = (
-                (col("busi_date").substr(1, 6) >= begin_month) &
-                (col("busi_date").substr(1, 6) <= end_month)
+                (F.col("busi_date").substr(1, 6) >= begin_month) &
+                (F.col("busi_date").substr(1, 6) <= end_month)
         )
     elif begin_month:
-        month_range_filter = (col("busi_date").substr(1, 6) >= begin_month)
+        month_range_filter = (F.col("busi_date").substr(1, 6) >= begin_month)
     elif end_month:
-        month_range_filter = (col("busi_date").substr(1, 6) <= end_month)
+        month_range_filter = (F.col("busi_date").substr(1, 6) <= end_month)
     else:
-        month_range_filter = lit(True)
+        month_range_filter = F.lit(True)
 
     # 基于单独的月份进行过滤
     if busi_month:
-        month_filter = (col("busi_date").substr(1, 6) == busi_month)
+        month_filter = (F.col("busi_date").substr(1, 6) == busi_month)
     else:
-        month_filter = lit(True)
+        month_filter = F.lit(True)
 
     # 基于单独的年份进行过滤
     if busi_year:
-        year_filter = (col("busi_date").substr(1, 4) == busi_year)
+        year_filter = (F.col("busi_date").substr(1, 4) == busi_year)
     else:
-        year_filter = lit(True)
+        year_filter = F.lit(True)
 
     # 基于交易日进行过滤
-    trade_day_filter = ((col("trade_flag") == "1") if is_trade_day else lit(True))
+    trade_day_filter = ((F.col("trade_flag") == "1") if is_trade_day else F.lit(True))
 
     # Apply all filters
     df_date = spark.table(pub_date_table) \
@@ -80,16 +81,71 @@ def get_date_period_and_days(
         month_filter &
         trade_day_filter &
         year_filter &
-        (col("market_no") == "1")
+        (F.col("market_no") == "1")
     ).agg(
-        min("busi_date").alias("v_begin_date"),
-        max("busi_date").alias("v_end_date"),
-        countDistinct("busi_date").alias("v_trade_days")
+        F.min("busi_date").alias("v_begin_date"),
+        F.max("busi_date").alias("v_end_date"),
+        F.countDistinct("busi_date").alias("v_trade_days")
     )
 
     return (df_date.first()["v_begin_date"],
             df_date.first()["v_end_date"],
             df_date.first()["v_trade_days"])
+
+
+def get_date_period_and_days(
+        begin_date=None,
+        end_date=None,
+        begin_month=None,
+        end_month=None,
+        busi_year=None,
+        busi_month=None,
+        is_trade_day=True
+):
+    """
+    获取给定日期范围内的开始日期、结束日期和总天数,不依赖spark
+    :param begin_date: 开始日期字符串, 格式为 'YYYYMMDD'
+    :param end_date: 结束日期字符串, 格式为 'YYYYMMDD'
+    :param begin_month: 开始月份的开始日期字符串, 格式为 'YYYYMM'
+    :param end_month: 结束月份的开始日期字符串, 格式为 'YYYYMM'
+    :param busi_year: 指定年份的开始日期字符串, 格式为 'YYYY'
+    :param busi_month: 指定月份的开始日期字符串, 格式为 'YYYYMM'
+    :param is_trade_day: 是否是交易日, 默认为 True
+    :return: 开始日期, 结束日期, 总天数
+    """
+    # 使用集合来存储符合条件的日期
+    date_range = set(pub_dates.keys())  # 初始为所有日期
+
+    # 处理年份
+    if busi_year:
+        date_range = {d for d in date_range if d.startswith(busi_year)}
+
+    # 处理月份
+    if busi_month:
+        date_range = {d for d in date_range if d.startswith(busi_month)}
+
+    # 处理日期输入
+    if begin_date:
+        date_range = {d for d in date_range if begin_date <= d}
+    if end_date:
+        date_range = {d for d in date_range if d <= end_date}
+
+    # 处理月份条件
+    if begin_month:
+        date_range = {d for d in date_range if d[:6] >= begin_month}
+    if end_month:
+        date_range = {d for d in date_range if d[:6] <= end_month}
+
+    # 过滤交易日
+    if is_trade_day:
+        date_range = {d for d in date_range if pub_dates[d]["TRADE_FLAG"] == "1"}
+
+    # 计算结果
+    total_days = len(date_range)
+    begin_date = min(date_range) if date_range else None
+    end_date = max(date_range) if date_range else None
+
+    return begin_date, end_date, total_days
 
 
 def get_busi_week_int(busi_date):
@@ -296,3 +352,10 @@ if __name__ == '__main__':
 
     print(get_day_last_month("20240531"))
     print(get_day_last_month("2024-06-30", "%Y-%m-%d", "%Y%m%d"))
+
+    print(get_date_period_and_days(
+        busi_month="202408",
+        begin_date="19000101",
+        end_date="20240830",
+        is_trade_day=True
+    ))
