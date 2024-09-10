@@ -64,6 +64,14 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("date_dt") == v_ds_begin_busi_date
     ).cache()  # 缓存
 
+    df_sett = spark.table("edw.h15_client_sett").filter(
+        col("busi_date").between(v_begin_date, v_end_date)
+    ).cache()  # 缓存
+
+    df_brokerdata_detail = spark.table("ods.t_ds_adm_brokerdata_detail").filter(
+        col("rec_freq") == "M"
+    ).cache()  # 缓存
+
     # 2.1 基础数据
     """
     交易所返还收入
@@ -308,10 +316,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     # 自然日均可用资金*年利率*统计周期内自然天数/年天数——资金对账表对应数据+系统内维护的年利率计算得到
     logger.info(to_color_str("开始计算自然日均可用资金", "green"))
-    df_tmp_4 = spark.table("edw.h15_client_sett").alias("t") \
-        .filter(
-        (col("t.busi_date").between(v_begin_date, v_end_date))
-    ).join(
+    df_tmp_4 = df_sett.alias("t").join(
         df_fund_account.alias("t2"),
         col("t.fund_account_id") == col("t2.fund_account_id"),
         "left"
@@ -554,10 +559,9 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("b.orig_department_id") == col("c.department_id"),
         "inner"
     ).join(
-        spark.table("ods.t_ds_adm_brokerdata_detail").alias("a2"),
+        df_brokerdata_detail.alias("a2"),
         (col("a.date_dt") == col("a2.tx_dt")) &
-        (col("a.investor_id") == col("a2.investor_id")) &
-        (col("a2.rec_freq") == "M"),
+        (col("a.investor_id") == col("a2.investor_id")),
         "left"
     ).join(
         df_oa_rela.alias("x"),
@@ -733,10 +737,9 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("b.orig_department_id") == col("c.department_id"),
         "inner"
     ).join(
-        spark.table("ods.t_ds_adm_brokerdata_detail").alias("a2"),
+        df_brokerdata_detail.alias("a2"),
         (col("a.date_dt") == col("a2.tx_dt")) &
-        (col("a.investor_id") == col("a2.investor_id")) &
-        (col("a2.rec_freq") == "M"),
+        (col("a.investor_id") == col("a2.investor_id")),
         "left"
     ).select(
         lit(v_busi_month).alias("month_id"),
@@ -763,19 +766,6 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         )
     )
 
-    # # 写入结果表,并重新加载,已获得完整的表结构
-    # logger.info(to_color_str("开始初始化结果表", "green"))
-    # return_to_hive(
-    #     spark=spark,
-    #     df_result=df_result,
-    #     target_table="ddw.t_cockpit_client_revenue",
-    #     insert_mode="overwrite"
-    # )
-    #
-    # df_result = spark.table("ddw.t_cockpit_client_revenue").alias("t").filter(
-    #     col("t.month_id") == v_busi_month
-    # )
-
     # df_result不具备ddw.t_cockpit_client_revenue完整的表结构,需要读取ddw.t_cockpit_client_revenue的schema
 
     result_columns = df_result.schema.names
@@ -793,10 +783,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     上交手续费 MARKET_TRANSFEE
     """
     logger.info(to_color_str("开始merge期初权益", "green"))
-    df_merge_source = spark.table("edw.h15_client_sett").alias("t") \
-        .filter(
-        col("t.busi_date").between(v_begin_date, v_end_date)
-    ).groupBy(
+    df_merge_source = df_sett.alias("t").groupBy(
         col("t.fund_account_id").alias("fund_account_id")
     ).agg(
         sum(
