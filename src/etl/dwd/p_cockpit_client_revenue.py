@@ -27,7 +27,6 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     v_last_month = get_month_str(v_busi_month, -1)
     v_last_ds_begin_busi_date = v_last_month[:4] + "-" + v_last_month[4:6] + "-01"
 
-    # TODO 以下两段耗时过高,交易日表一年不变数据量不大,应该作为项目常量
     v_begin_date, v_end_date, v_trade_days = get_date_period_and_days(
         busi_month=v_busi_month,
         begin_date='19000101',  # 1900-01-01,基于开始日期和结束日期进行过滤,所以这里设置为最小日期
@@ -55,11 +54,15 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     # 2. 业务逻辑
 
     # 先缓存基础数据
-    df_investor = spark.table("ods.t_ds_dc_investor").cache()  # 缓存
+    df_investor = spark.table("ods.t_ds_dc_investor").select(["investor_id", "orig_department_id", "investor_nam"]).cache()  # 缓存
     df_org = spark.table("ods.t_ds_dc_org").cache()  # 缓存
     df_oa_rela = spark.table("ddw.t_ctp_branch_oa_rela").cache()  # 缓存
     df_202 = spark.table("ddw.t_cockpit_00202").cache()  # 缓存
     df_fund_account = spark.table("edw.h12_fund_account").select("fund_account_id", "branch_id").cache()  # 缓存
+
+    df_investor_value = spark.table("ods.t_ds_adm_investor_value").filter(
+        col("date_dt") == v_ds_begin_busi_date
+    ).cache()  # 缓存
 
     # 2.1 基础数据
     """
@@ -409,10 +412,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     # 客户交返
     # 客户手续费返还 = 保留字段，目前值为0
     logger.info(to_color_str("开始计算资金账号相关数据", "green"))
-    df_tmp_6 = spark.table("ods.t_ds_adm_investor_value").alias("t") \
-        .filter(
-        col("t.date_dt") == v_ds_begin_busi_date
-    ).join(
+    df_tmp_6 = df_investor_value.alias("t").join(
         df_investor.alias("b"),
         col("t.investor_id") == col("b.investor_id"),
         "inner"
@@ -545,10 +545,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     其他支出风险金
     """
     logger.info(to_color_str("开始计算业务人员相关数据", "green"))
-    df_tmp_8 = spark.table("ods.t_ds_adm_investor_value").alias("a") \
-        .filter(
-        col("a.date_dt") == v_ds_begin_busi_date
-    ).join(
+    df_tmp_8 = df_investor_value.alias("a").join(
         df_investor.alias("b"),
         col("a.investor_id") == col("b.investor_id"),
         "inner"
@@ -727,10 +724,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     # 初始化数据
     logger.info(to_color_str("开始初始化数据", "green"))
-    df_result = spark.table("ods.t_ds_adm_investor_value").alias("a") \
-        .filter(
-        col("a.date_dt") == v_ds_begin_busi_date
-    ).join(
+    df_result = df_investor_value.alias("a").join(
         df_investor.alias("b"),
         col("a.investor_id") == col("b.investor_id"),
         "inner"
