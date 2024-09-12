@@ -50,12 +50,13 @@ def p_cockpit_00114_data(spark: SparkSession, busi_date: str):
         col("t.client_name"),  # 客户名称
         col("t.end_rights"),  # 期末权益
         col("t.remain_transfee"),  # 留存手续费
-        col("a.fund_rate"),  # 比例
+        col("a.fund_rate"),  # 收入分配比例
+        col("a.rights_rate"),  # 权益分配比例
         col("a.out_oa_branch_id"),
         col("a.out_oa_branch_name"),  # 划出部门
         col("a.in_oa_branch_id"),
         col("a.in_oa_branch_name"),  # 划入部门
-        (col("t.end_rights") * col("a.fund_rate")).alias("allocat_end_rights"),  # 分配期末权益
+        (col("t.end_rights") * col("a.rights_rate")).alias("allocat_end_rights"),  # 分配期末权益
         (col("t.remain_transfee") * col("a.fund_rate")).alias("allocat_remain_transfee")  # 分配留存手续费
     )
 

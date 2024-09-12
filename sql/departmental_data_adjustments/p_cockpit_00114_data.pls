@@ -34,6 +34,7 @@ BEGIN
      end_rights,
      remain_transfee,
      fund_rate,
+     rights_rate,
      out_oa_branch_id,
      out_oa_branch_name,
      in_oa_branch_id,
@@ -59,12 +60,13 @@ BEGIN
            t.client_name, --客户名称
            t.end_rights, --期末权益
            t.remain_transfee, --留存手续费,
-           a.fund_rate, --比例
+           a.fund_rate, --收入分配比例
+           a.rights_rate,--权益分配比例
            a.out_oa_branch_id,
            a.out_oa_branch_name, --划出部门
            a.in_oa_branch_id,
            a.in_oa_branch_name, --划入部门
-           (t.end_rights * a.fund_rate) AS allocat_end_rights, --分配期末权益
+           (t.end_rights * a.rights_rate) AS allocat_end_rights, --分配期末权益
            (t.remain_transfee * a.fund_rate) AS allocat_remain_transfee --分配留存手续费
       FROM tmp t
      INNER JOIN cf_busimg.t_cockpit_00114 a
