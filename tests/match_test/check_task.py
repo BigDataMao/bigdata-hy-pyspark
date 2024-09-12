@@ -1,7 +1,7 @@
 from pyspark.sql.functions import col, sum as spark_sum
 
-from match_test.check_list import check_list
 from src.env.task_env import create_env
+from tests.match_test.check_list import check_list
 
 # 创建SparkSession
 spark = create_env()
@@ -42,7 +42,7 @@ def sum_numeric_columns(o_name: str, h_name: str, filter_str: str = "1 = 1") -> 
 
     # 计算差额
     differences = {
-        c: (float(oracle_sums[c]) - float(hive_sums[c]) if abs(float(oracle_sums[c]) - float(hive_sums[c])) >= 1 else 0)
+        c: (float(oracle_sums[c]) - float(hive_sums[c]) if abs(float(oracle_sums[c]) - float(hive_sums[c])) >= 0.1 else 0)
         for c in numeric_columns
     }
 
@@ -54,7 +54,7 @@ def sum_numeric_columns(o_name: str, h_name: str, filter_str: str = "1 = 1") -> 
     # 打印数据
     for key, value in differences.items():
         print(
-            f"{key:<{max_key_length}} : {round(value):>20}   {round(oracle_sums[key]):>35}   {round(hive_sums[key]):>35}")
+            f"{key:<{max_key_length}} : {round(value,1):>20}   {round(oracle_sums[key],1):>35}   {round(hive_sums[key],1):>35}")
 
     return oracle_sums, hive_sums, differences
 
@@ -62,7 +62,9 @@ def sum_numeric_columns(o_name: str, h_name: str, filter_str: str = "1 = 1") -> 
 for oracle_table_name, hive_table_name, filter_condition in check_list:
     # 计算数字列的和与差额
     sum_numeric_columns(oracle_table_name, hive_table_name, filter_condition)
-    print("\n\n")
+    print("\n")
+    print("=" * 130)
+    print("\n")
 
 # 停止SparkSession
 spark.stop()
