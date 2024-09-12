@@ -1,5 +1,5 @@
-pyspark==2.4.4 # 这是spark的python包
-pyspark-stubs==2.4.0.post12 # 这是pyspark的类型提示
+pyspark==3.0.3 # 这是spark的python包
+pyspark-stubs==3.0.0.post3 # 这是pyspark的类型提示
 PyYAML==6.0.1 # 这是yaml的python包
 six==1.16.0  # 这是python-dateutil的依赖
 python-dateutil==2.9.0 # 这是python的日期处理包,自带的不好用
