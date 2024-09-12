@@ -1016,8 +1016,9 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     ).select(
         col("x.fund_account_id"),
         (
-                col("b.remain_transfee") + col("b.market_ret") +
-                col("c.accrued_interest")
+                coalesce(col("b.remain_transfee"), lit(0)) +
+                coalesce(col("b.market_ret"), lit(0)) +
+                coalesce(col("c.accrued_interest"), lit(0))
         ).alias("total_income")
     )
 
