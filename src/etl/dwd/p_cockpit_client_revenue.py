@@ -451,7 +451,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum("t.exchangeret_amt"), 2).alias("market_ret"),
         round(sum(col("t.subsistence_fee_amt") / (lit(1) + coalesce(col("c.para_value"), lit(0)))), 2).alias("remain_transfee_after_tax"),
         round(sum(col("t.subsistence_fee_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("remain_transfee_add_tax"),
-        round(sum(col("t.subsistence_fee_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("remain_risk_fund"),
+        round(sum(col("t.subsistence_fee_amt") * coalesce(col("e.para_value"), lit(0))).cast("decimal(16,4)"), 2).alias("remain_risk_fund"),
         round(sum("t.calint_amt"), 2).alias("interest_base"),
         round(sum("t.i_int_amt"), 2).alias("client_interest_settlement"),
         round(sum(col("t.i_int_amt") / (lit(1) + coalesce(col("c.para_value"), lit(0)))), 2).alias("client_interest_after_tax"),
@@ -693,7 +693,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         ), 2).alias("staff_remain_comm_add_tax"),  # 员工留存增值税附加税
         round(sum(
             coalesce(col("a2.ib_amt"), col("a.staff_amt")) * coalesce(col("f.para_value"), lit(0))
-        ), 2).alias("staff_remain_comm_risk_fund"),  # 员工留存风险金
+        ).cast("decimal(16,4)"), 2).alias("staff_remain_comm_risk_fund"),  # 员工留存风险金
         round(sum(
             col("a.staff_eret_amt")
         ), 2).alias("staff_ret"),  # 员工交返
