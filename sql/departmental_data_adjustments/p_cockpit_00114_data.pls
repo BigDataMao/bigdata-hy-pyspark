@@ -33,41 +33,51 @@ BEGIN
      client_name,
      end_rights,
      remain_transfee,
+     done_amount,
+     done_money,
      fund_rate,
      rights_rate,
+     done_rate,
      out_oa_branch_id,
      out_oa_branch_name,
      in_oa_branch_id,
      in_oa_branch_name,
      allocat_end_rights,
-     allocat_remain_transfee)
+     allocat_remain_transfee,
+     allocat_done_amount,
+     allocat_done_money)
     WITH tmp AS
      (SELECT t.fund_account_id, --资金账号
              b.client_name, --客户名称
              t.rights AS end_rights, --期末权益
-             t.transfee + t.delivery_transfee + t.strikefee -
-             t.market_transfee - t.market_delivery_transfee -
-             t.market_strikefee AS remain_transfee --留存手续费
-        FROM cf_sett.t_client_sett t
+             t.remain_transfee  ,--留存手续费
+             t.done_amount,--成交手数
+             t.done_money --成交额
+        FROM cf_stat.t_rpt_06008 t
        INNER JOIN cf_busimg.t_cockpit_00114 a
           ON t.fund_account_id = a.fund_account_id
          AND i_busi_date BETWEEN a.begin_date AND a.end_date
        INNER JOIN cf_sett.t_fund_account b
           ON a.fund_account_id = b.fund_account_id
-       WHERE t.busi_date = i_busi_date)
+       WHERE t.n_busi_date = i_busi_date)
     SELECT i_busi_date,
            t.fund_account_id, --资金账号
            t.client_name, --客户名称
            t.end_rights, --期末权益
            t.remain_transfee, --留存手续费,
+           t.done_amount,
+           t.done_money,
            a.fund_rate, --收入分配比例
            a.rights_rate,--权益分配比例
+           a.done_rate,
            a.out_oa_branch_id,
            a.out_oa_branch_name, --划出部门
            a.in_oa_branch_id,
            a.in_oa_branch_name, --划入部门
            (t.end_rights * a.rights_rate) AS allocat_end_rights, --分配期末权益
-           (t.remain_transfee * a.fund_rate) AS allocat_remain_transfee --分配留存手续费
+           (t.remain_transfee * a.fund_rate) AS allocat_remain_transfee, --分配留存手续费
+           (t.done_amount * a.done_rate) , -- 分配成交手数
+           (t.done_money * a.done_rate) --分配成交额
       FROM tmp t
      INNER JOIN cf_busimg.t_cockpit_00114 a
         ON t.fund_account_id = a.fund_account_id;
