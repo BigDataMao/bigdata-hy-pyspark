@@ -49,34 +49,11 @@ begin
            t.src_branch_name,
            t.branch_id,
            t.branch_name,
-           a.index_id,
-           a.index_name,
-           sum(case
-                 when a.index_id = '01' then
-                  t.avg_rights * t.adjust_rate
-                 when a.index_id = '02' then
-                  t.end_rights * t.adjust_rate
-                 when a.index_id = '03' then
-                  t.begin_rights * t.adjust_rate
-                 when a.index_id = '04' then
-                  t.done_amount * t.adjust_rate
-                 when a.index_id = '05' then
-                  t.done_money * t.adjust_rate
-               end) as adjust_value
-      from CF_BUSIMG.T_COCKPIT_00306           t,
-           CF_BUSIMG.T_COCKPIT_PROJ_INDEX_RELA a
-     where t.month_id = v_month_id
-       and substr(a.adjust_proj_id, 1, 20) = v_op_object
-       and a.adjust_direct = '1'
-     group by t.month_id,
-              t.adjust_proj_id,
-              t.adjust_proj,
-              t.src_branch_id,
-              t.src_branch_name,
-              t.branch_id,
-              t.branch_name,
-              a.index_id,
-              a.index_name;
+           t.index_id,
+           t.index_name,
+           t.adjust_value
+      from CF_BUSIMG.T_COCKPIT_00306 t
+     where t.month_id = v_month_id;
   commit;
   -------------------------------------------------------------
   o_return_code := 0;

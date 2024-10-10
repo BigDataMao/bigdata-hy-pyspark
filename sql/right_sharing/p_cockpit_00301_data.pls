@@ -70,7 +70,14 @@ begin
                     else
                      0
                   end)
+             when a.index_id = '04' then
+               sum(t.allocat_done_amount)
+             when a.index_id = '05' then
+               sum(t.allocat_done_money)
+             when a.index_id = '06' then
+               sum(t.allocat_remain_transfee)
            end
+
       from CF_BUSIMG.T_COCKPIT_00114_DATA      t,
            CF_BUSIMG.T_COCKPIT_PROJ_INDEX_RELA a
      where substr(t.busi_date, 1, 6) = v_month_id
