@@ -1,13 +1,25 @@
 # -*- coding: utf-8 -*-
-
+import argparse
 import logging
 import os
 
 from lib import yaml
+
 from src.utils.path_utils import get_project_path
 
-# config_file = get_project_path() + "/configs/config.yaml" TODO: Fix this
-config_file = "/opt/workspace/spark/bigdata-hy-pyspark/configs/config.yaml"
+
+def parse_project_path():
+    # 解析命令行所传参数
+    parser = argparse.ArgumentParser()  # 创建解析参数的对象
+    parser.add_argument('--project_path', help='Project path', default=None)  # 添加项目路径参数
+    args, unknown = parser.parse_known_args()  # 获取参数
+    return args.project_path
+
+
+project_path = parse_project_path()
+if project_path is None:
+    project_path = get_project_path()
+config_file = project_path + "/configs/config.yaml"
 
 
 def load_config(config_path):

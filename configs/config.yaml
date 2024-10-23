@@ -1,4 +1,9 @@
 hive:
+  # hiveserver2连接配置
+  "host": "192.168.25.10"
+  "port": "10000"
+  "username": "root"
+  # spark连接hive配置
   "spark.master": "spark://master:7077"
   "spark.sql.warehouse.dir": "hdfs://master:9000/user/hive/warehouse"
   "spark.hadoop.hive.metastore.uris": "thrift://master:9083"
@@ -9,6 +14,7 @@ hive:
   "hive.exec.dynamic.partition.mode": "nonstrict"
   "hive.exec.max.dynamic.partitions": "1000"
   "hive.exec.max.dynamic.partitions.pernode": "500"
+  "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
   "spark.dynamicAllocation.initialExecutors": "3"
   "spark.dynamicAllocation.minExecutors": "3"  # 最小executor数量,小数据量下,提高数量毫无意义.
   "spark.dynamicAllocation.maxExecutors": "12"
@@ -16,14 +22,23 @@ hive:
   "spark.executor.cores": "8"  # 每个executor的核数, 小数据量下,提高数量毫无意义.
   "spark.default.parallelism": "128"
   "spark.sql.shuffle.partitions": "8"  # 在本项目中,设置为8,因为数据量不大.设置小一些,显著提高性能.
-  "spark.debug.maxToStringFields": "600"
+  "spark.sql.debug.maxToStringFields": "600"
   "spark.sql.execution.logExtendedInfo.enabled": "true"  # 是否打印执行计划
   "spark.sql.crossJoin.enabled": "true"  # 是否允许笛卡尔积
+  "spark.dynamicAllocation.enabled": "true"  # 是否启用动态分配资源,打开则必须开启spark.shuffle.service.enabled.小数据测试发现没啥区别
+  "spark.shuffle.service.enabled": "true"  # 是否启用外部shuffle服务.2.4需要启动start-shuffle-service.sh,3.0以后似乎不需要
+  "spark.shuffle.service.port": "7447"  # 外部shuffle服务端口
+  "spark.sql.hive.metastore.version": "2.1.1"
+  "spark.sql.hive.execution.version": "2.1.1"
+  "spark.sql.hive.metastore.jars": "/opt/hive/lib/*"
 
 oracle:
   "dsn": "192.168.25.15:1521/WOLF"
   "user": "wolf"
   "password": "wolf"
+  "min": 1
+  "max": 5
+  "increment": 1
 
 log:
   "is_count": "false"
