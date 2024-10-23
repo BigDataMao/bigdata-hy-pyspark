@@ -1,5 +1,16 @@
-pyspark==3.0.3 # 这是spark的python包
-pyspark-stubs==3.0.0.post3 # 这是pyspark的类型提示
-PyYAML==6.0.1 # 这是yaml的python包
-six==1.16.0  # 这是python-dateutil的依赖
-python-dateutil==2.9.0 # 这是python的日期处理包,自带的不好用
+# 这是spark的python包
+pyspark==3.0.3
+# 这是pyspark的类型提示
+pyspark-stubs==3.0.0.post3
+# 这是yaml的python包
+PyYAML==6.0.1
+# 这是python-dateutil的依赖
+six==1.16.0
+# 这是python的日期处理包,自带的不好用
+python-dateutil==2.9.0
+# python连接oracle的包,cx_Oracle的升级版
+oracledb==2.1.2
+# 这是python自己连接hive的包
+thrift==0.20.0
+thrift-sasl==0.4.3
+PyHive~=0.7.0
