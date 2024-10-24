@@ -24,9 +24,15 @@ CREATE OR REPLACE PROCEDURE CF_BUSIMG.P_COCKPIT_00128_DATA(I_BUSI_DATE   IN VARC
   ---------------------------------------------------------------------------------------
   --业务变量
   v_month_id varchar2(6);
+  v_para     number;
   ---------------------------------------------------------------------------------------
 BEGIN
   v_month_id := substr(I_BUSI_DATE, 1, 6);
+  select t.para_value
+    into v_para
+    from CF_BUSIMG.T_COCKPIT_00202 t
+   where (I_BUSI_DATE between t.begin_date and t.end_date)
+     and t.fee_type = '1003';
   delete from CF_BUSIMG.T_COCKPIT_00128_data t
    where t.month_id = v_month_id;
   commit;
@@ -36,12 +42,17 @@ BEGIN
            t.branch_id, --部门ID
            x.oa_branch_id, --部门
            sum(NVL(t.DONE_MONEY, 0)) AS DONE_MONEY, --成交金额
-           sum(nvl(t.secu_fee, 0)) as bzjj
+           sum(NVL(t.DONE_MONEY, 0))*v_para as bzjj
       from CF_BUSIMG.T_COCKPIT_CLIENT_REVENUE t
      INNER JOIN cf_busimg.t_ctp_branch_oa_rela x
         on t.branch_id = x.ctp_branch_id
      WHERE T.Month_Id = v_month_id
        and t.is_main = '1'
+       and t.branch_id not in
+           (select t.branch_id
+              from CF_SETT.T_BRANCH t
+             where t.branch_id like '0E%'
+               and t.branch_id <> '0E05')
      group by t.month_id, t.branch_id, x.oa_branch_id;
   COMMIT;
   -------------------------------------------------------------

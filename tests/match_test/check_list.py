@@ -42,7 +42,7 @@ check_list = [
     [
         "cf_busimg.t_cockpit_00128_data",  # 只有6月数据
         "ddw.t_cockpit_00128_data",
-        "month_id = '202406'"
+        "month_id = '202408'"
     ],
     [
         "cf_busimg.t_cockpit_00165",  # 依赖00128_data数据
@@ -89,4 +89,9 @@ check_list = [
         "ddw.t_cockpit_00158",
         "month_id = '202406'"
     ],
+    [
+        "cf_busimg.t_cockpit_00301",  # 依赖00301,302,303,304,305,306
+        "ddw.t_cockpit_00301",
+        "month_id = '202406'"
+    ]
 ]
