@@ -46,3 +46,12 @@ if __name__ == "__main__":
         sorted_tables = sorted(set(tables))
         for table in sorted_tables:  # 去重后打印
             print(f"    {table}")
+
+    # 获取当前目录下dwd的表格
+    print(f"Searching for Spark tables in: {current_directory}")
+    dwd_categorized_tables = find_spark_tables(current_directory)
+    for category, tables in dwd_categorized_tables.items():
+        print(f"Category: {category}")
+        sorted_tables = sorted(set(tables))
+        for table in sorted_tables:
+            print(f"    {table}")
