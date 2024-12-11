@@ -8768,3 +8768,11 @@ pub_dates = {
         "BUSI_DATE_NATURE": "20241231"
     }
 }
+
+if  __name__ == "__main__":
+    list_pub_date = []
+    # 找出所有的交易日
+    for k in pub_dates:
+        if pub_dates[k]["TRADE_FLAG"] == "1":
+            list_pub_date.append(k)
+    print(list_pub_date)
