@@ -1,0 +1,2 @@
+SP,oracle_table_fullname,hive_table_fullname,partition_col,need_collection
+,cf_busimg.t_cockpit_client_revenue,ddw.t_cockpit_client_revenue,month_id,否
