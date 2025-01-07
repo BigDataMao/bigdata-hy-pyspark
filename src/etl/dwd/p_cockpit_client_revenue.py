@@ -4,9 +4,17 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import col, sum, regexp_replace, when, round, lit, coalesce, row_number, expr
 
 from src.env.config import Config
-from src.env.task_env import update_dataframe, return_to_hive, log
-from src.utils.date_utils import get_date_period_and_days, get_month_str, get_day_last_month
+from src.env.task_env import update_dataframe, return_to_hive, log, is_count
+from src.utils.date_utils import get_date_period_and_days, get_month_str, get_day_last_month, get_trade_date
 from src.utils.logger_uitls import to_color_str
+from data.dictionaries.pub_date import pub_dates
+
+list_pub_date = []
+# 找出所有的交易日
+for k in pub_dates:
+    if pub_dates[k]["TRADE_FLAG"] == "1":
+        list_pub_date.append(k)
+
 
 
 @log
@@ -24,8 +32,20 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     v_busi_month = busi_date[:6]
     v_ds_begin_busi_date = busi_date[:4] + "-" + busi_date[4:6] + "-01"
+    v_begin_busi_date = v_busi_month + "01"  # 当月月初
     v_last_month = get_month_str(v_busi_month, -1)
     v_last_ds_begin_busi_date = v_last_month[:4] + "-" + v_last_month[4:6] + "-01"
+
+    # 利息计算开始时间
+    v_lx_begin_date = get_month_str(v_busi_month, -1) + "21"
+    # 利息计算结束时间
+    v_lx_end_date = v_busi_month + "20"
+    # 利息计算开始日期-交易日
+    if v_lx_begin_date not in list_pub_date:
+        v_lx_trade_date = get_trade_date(list_pub_date, v_lx_begin_date, 1)
+        v_lx_begin_date_before = get_trade_date(list_pub_date, v_lx_trade_date, -1)
+    else:
+        v_lx_begin_date_before = v_lx_begin_date
 
     v_begin_date, v_end_date, v_trade_days = get_date_period_and_days(
         busi_month=v_busi_month,
@@ -43,13 +63,43 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     v_last_ds_end_busi_date = get_day_last_month(v_end_busi_date, "%Y%m%d", "%Y-%m-%d")
 
-    logger.info(
-        f"v_busi_month: {v_busi_month}, v_ds_begin_busi_date: {v_ds_begin_busi_date}, "
-        f"v_last_month: {v_last_month}, v_last_ds_begin_busi_date: {v_last_ds_begin_busi_date}, "
-        f"v_begin_date: {v_begin_date}, v_end_date: {v_end_date}, "
-        f"v_trade_days: {v_trade_days}, v_end_busi_date: {v_end_busi_date}, "
-        f"v_ds_end_busi_date: {v_ds_end_busi_date}, v_last_ds_end_busi_date: {v_last_ds_end_busi_date}"
+    params = {
+        "v_busi_month": v_busi_month,
+        "v_ds_begin_busi_date": v_ds_begin_busi_date,
+        "v_last_month": v_last_month,
+        "v_last_ds_begin_busi_date": v_last_ds_begin_busi_date,
+        "v_begin_date": v_begin_date,
+        "v_end_date": v_end_date,
+        "v_trade_days": v_trade_days,
+        "v_end_busi_date": v_end_busi_date,
+        "v_ds_end_busi_date": v_ds_end_busi_date,
+        "v_last_ds_end_busi_date": v_last_ds_end_busi_date,
+        "v_lx_begin_date": v_lx_begin_date,
+        "v_lx_end_date": v_lx_end_date,
+        "v_lx_begin_date_before": v_lx_begin_date_before,
+        "v_begin_busi_date": v_begin_busi_date
+    }
+
+    for k, v in params.items():
+        logger.info(f"{k}: {v}")
+
+
+    # TODO ods.t_ds_adm_cust_01 需要配置采集
+    df_tmp_brp_06008_clear = spark.table("ods.t_ds_adm_cust_01").withColumn(
+        "tx_dt_tmp", regexp_replace("tx_dt", "-", "")
+    ).filter(
+        col("tx_dt_tmp").between(v_begin_date, v_end_date)
+    ).groupBy(
+        col("tx_dt_tmp").alias("busi_date"),
+        col("investor_id").alias("fund_account_id")
+    ).agg(
+        sum(
+            col("subsistence_fee_amt") - col("fd_amt") - col("return_amt") - coalesce(col("soft_amt"), lit(0))
+        ).alias("clear_remain_transfee")  # TODO 这里有null参与减法的风险
     )
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_brp_06008_clear:{df_tmp_brp_06008_clear.count()}", "green"))
 
     # 2. 业务逻辑
 
@@ -58,7 +108,7 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     df_org = spark.table("ods.t_ds_dc_org").cache()  # 缓存
     df_oa_rela = spark.table("ddw.t_ctp_branch_oa_rela").cache()  # 缓存
     df_202 = spark.table("ddw.t_cockpit_00202").cache()  # 缓存
-    df_fund_account = spark.table("edw.h12_fund_account").select("fund_account_id", "branch_id").cache()  # 缓存
+    df_fund_account = spark.table("edw.h12_fund_account").select("fund_account_id", "branch_id", "isactive", "close_date").cache()  # 缓存
 
     df_investor_value = spark.table("ods.t_ds_adm_investor_value").filter(
         col("date_dt") == v_ds_begin_busi_date
@@ -188,8 +238,40 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
                 ).otherwise(0), 4)
         ).alias("ret_fee_amt_dce2"),
         sum(
-            col("a.investor_ret_amt")
-        ).alias("investor_ret_amt")
+            round(
+                when(
+                    col("a.tx_dt") >= v_ds_begin_busi_date,
+                    col("a.investor_ret_amt")
+                ).otherwise(0), 4)
+        ).alias("investor_ret_amt"),
+        sum(
+            round(
+                when(
+                    col("a.tx_dt") <= v_last_ds_end_busi_date,
+                    col("a.ret_fee_amt_dce11a")
+                ).otherwise(0), 4)
+        ).alias("ret_fee_amt_dce11a"),
+        sum(
+            round(
+                when(
+                    col("a.tx_dt") <= v_last_ds_end_busi_date,
+                    col("a.ret_fee_amt_gfex")
+                ).otherwise(0), 4)
+        ).alias("ret_fee_amt_gfex"),
+        sum(
+            round(
+                when(
+                    col("a.tx_dt") <= v_last_ds_end_busi_date,
+                    col("a.ret_fee_amt_gfex2")
+                ).otherwise(0), 4)
+        ).alias("ret_fee_amt_gfex2"),
+        sum(
+            round(
+                when(
+                    col("a.tx_dt") <= v_last_ds_end_busi_date,
+                    col("a.ret_fee_amt_cffex202206")
+                ).otherwise(0), 4)
+        ).alias("ret_fee_amt_cffex202206")
     )
 
     df_tmp_1 = tmp.alias("a").groupBy(
@@ -217,7 +299,11 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         sum(
             round("ret_fee_amt_shfe1", 4)
         ).alias("ret_fee_amt_shfe1"),
-        sum("investor_ret_amt").alias("investor_ret_amt")
+        sum("investor_ret_amt").alias("investor_ret_amt"),
+        sum("ret_fee_amt_dce11a").alias("ret_fee_amt_dce11a"),
+        sum("ret_fee_amt_gfex").alias("ret_fee_amt_gfex"),
+        sum("ret_fee_amt_gfex2").alias("ret_fee_amt_gfex2"),
+        sum("ret_fee_amt_cffex202206").alias("ret_fee_amt_cffex202206"),
     ).withColumn(
         "order_seq",
         lit(1)
@@ -225,43 +311,52 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         col("busi_date"),
         col("fund_account_id"),
         (
-                col("ret_fee_amt") +
-                col("ret_fee_amt_czce") +
-                col("ret_fee_amt_dce") +
-                col("ret_fee_amt_cffex") +
-                col("ret_fee_amt_cffex2021") +
-                col("ret_fee_amt_shfe") +
-                col("ret_fee_amt_shfe1") +
-                col("ret_fee_amt_dce1") +
-                col("ret_fee_amt_dce2") +
-                col("ret_fee_amt_dce31") +
-                col("ret_fee_amt_dce32") +
-                col("ret_fee_amt_dce33")
+                col("ret_fee_amt") + col("ret_fee_amt_czce") + col("ret_fee_amt_dce") +
+                col("ret_fee_amt_cffex") + col("ret_fee_amt_cffex2021") +
+                # col("ret_fee_amt_shfe") + col("ret_fee_amt_shfe1") +
+                col("ret_fee_amt_dce11a") + col("ret_fee_amt_gfex") + col("ret_fee_amt_gfex2") +
+                col("ret_fee_amt_cffex202206") +
+                col("ret_fee_amt_dce1") + col("ret_fee_amt_dce2") + col("ret_fee_amt_dce31") +
+                col("ret_fee_amt_dce32") + col("ret_fee_amt_dce33")
         ).alias("market_reduct")  # 交易所减收
     )
 
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_1:{df_tmp_1.count()}", "green"))
+
     # 交易所返还支出 TODO 该条基本上没有记录,为空的df,所以后面的需要coalesce处理occur_money
+    # 交易所返还支出 改成取 资金类型为A031   20241121
+    # 客户结息  改成取 资金类型为A032     20241121
     logger.info(to_color_str("开始计算交易所返还支出", "green"))
     df_tmp_2 = spark.table("edw.h14_fund_jour").alias("a") \
         .filter(
-        (col("a.fund_type") == "3") &
         (col("a.fund_direct") == "1") &
-        (col("a.busi_date").between(v_begin_date, v_end_date))
+        (col("a.busi_date").between(v_begin_date, v_end_date)) &
+        (col("a.FUND_PROJECTID").isin("A031", "A032"))
     ).groupBy(
         col("a.fund_account_id").alias("fund_account_id"),
         col("a.busi_date").alias("busi_date")
     ).agg(
-        sum("a.occur_money").alias("occur_money")
+        sum(
+            when(
+                col("a.FUND_PROJECTID") == "A031",
+                col("a.occur_money")
+            ).otherwise(0),
+        ).alias("occur_money"),
+        sum(
+            when(
+                col("a.FUND_PROJECTID") == "A032",
+                col("a.occur_money")
+            ).otherwise(0),
+        ).alias("CLIENT_INTEREST_SETTLEMENT")
     ).fillna(0)
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_2:{df_tmp_2.count()}", "green"))
 
     # 交易所净返还（扣客户交返）=交易所返还收入-交易所返还支出
     logger.info(to_color_str("开始计算交易所净返还", "green"))
-    df_tmp_3 = df_tmp_1.alias("t").join(
-        df_tmp_2.alias("t1"),
-        (col("t.fund_account_id") == col("t1.fund_account_id")) &
-        (col("t.busi_date") == col("t1.busi_date")),
-        "left"
-    ).join(
+    tmp = df_tmp_1.alias("t").join(
         df_fund_account.alias("t2"),
         col("t.fund_account_id") == col("t2.fund_account_id"),
         "left"
@@ -287,36 +382,133 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         (col("e.fee_type") == "1002") &
         (col("t.busi_date").between(col("e.begin_date"), col("e.end_date"))),
         "left"
+    ).groupBy(
+        col("t.fund_account_id").alias("fund_account_id")
+    ).agg(
+        sum("t.market_reduct").alias("market_reduct"),
+        sum(
+            col("t.market_reduct") / (1 + coalesce(col("c.para_value"), lit(0)))
+        ).alias("market_reduct_after_tax"),
+        sum(
+            col("t.market_reduct") * coalesce(col("d.para_value"), lit(0))
+        ).alias("market_reduct_add_tax"),
+        sum(
+            col("t.market_reduct") * coalesce(col("e.para_value"), lit(0))
+        ).alias("market_reduct_risk_fund"),
+    ).fillna(0)
+
+    """
+    tmp1 as
+     (select t1.fund_account_id,
+             sum(t1.occur_money) as occur_money,
+             sum(t1.occur_money / (1 + nvl(c.para_value, 0))) as occur_money_AFTER_TAX,
+             sum(t1.occur_money * nvl(d.para_value, 0)) as occur_money_ADD_TAX,
+             sum(t1.occur_money * nvl(e.para_value, 0)) as occur_money_RISK_FUND
+        from CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_2 t1
+        left join cf_sett.t_fund_account t2
+          on t1.fund_account_id = t2.fund_account_id
+       inner join cf_busimg.t_ctp_branch_oa_rela x
+          on t2.branch_id = x.ctp_branch_id
+        left join CF_BUSIMG.T_COCKPIT_00202 c
+          on (instr(c.branch_id, x.oa_branch_id) > 0)
+         and c.fee_type = '1004' --增值税税率
+         and t1.busi_date between c.BEGIN_DATE and c.end_date
+        left join CF_BUSIMG.T_COCKPIT_00202 d
+          on (instr(d.branch_id, x.oa_branch_id) > 0)
+         and d.fee_type = '1005' --增值税及附加税税率
+         and t1.busi_date between d.BEGIN_DATE and d.end_date
+        left join CF_BUSIMG.T_COCKPIT_00202 e
+          on (instr(e.branch_id, x.oa_branch_id) > 0)
+         and e.fee_type = '1002' --风险金比例
+         and t1.busi_date between e.BEGIN_DATE and e.end_date
+       group by t1.fund_account_id)
+       
+           select t.fund_account_id,
+             (t.MARKET_REDUCT - nvl(t1.OCCUR_MONEY, 0)) as MARKET_RET_REDUCE, --交易所净返还（扣客户交返）
+             (t.MARKET_REDUCT_AFTER_TAX - nvl(t1.occur_money_AFTER_TAX, 0)) as MARKET_RET_REDUCE_AFTER_TAX, --交易所净返还（扣客户交返）_不含税
+             (t.market_reduct_ADD_TAX - nvl(t1.occur_money_ADD_TAX, 0)) as MARKET_RET_ADD_TAX, --交返增值税及附加
+             (t.market_reduct_RISK_FUND - nvl(t1.occur_money_RISK_FUND, 0)) as MARKET_RET_RISK_FUND --交返风险金
+        from tmp t
+        left join tmp1 t1
+          on t.fund_account_id = t1.fund_account_id;
+    """
+
+    tmp1 = df_tmp_2.alias("t1").join(
+        df_fund_account.alias("t2"),
+        col("t1.fund_account_id") == col("t2.fund_account_id"),
+        "left"
+    ).join(
+        df_oa_rela.alias("x"),
+        col("t2.branch_id") == col("x.ctp_branch_id"),
+        "inner"
+    ).join(
+        df_202.alias("c"),
+        (col("c.branch_id").contains(col("x.oa_branch_id"))) &
+        (col("c.fee_type") == "1004") &
+        (col("t1.busi_date").between(col("c.begin_date"), col("c.end_date"))),
+        "left"
+    ).join(
+        df_202.alias("d"),
+        (col("d.branch_id").contains(col("x.oa_branch_id"))) &
+        (col("d.fee_type") == "1005") &
+        (col("t1.busi_date").between(col("d.begin_date"), col("d.end_date"))),
+        "left"
+    ).join(
+        df_202.alias("e"),
+        (col("e.branch_id").contains(col("x.oa_branch_id"))) &
+        (col("e.fee_type") == "1002") &
+        (col("t1.busi_date").between(col("e.begin_date"), col("e.end_date"))),
+        "left"
+    ).groupBy(
+        col("t1.fund_account_id").alias("fund_account_id")
+    ).agg(
+        sum("t1.occur_money").alias("occur_money"),
+        sum(
+            col("t1.occur_money") / (1 + coalesce(col("c.para_value"), lit(0)))
+        ).alias("occur_money_after_tax"),
+        sum(
+            col("t1.occur_money") * coalesce(col("d.para_value"), lit(0))
+        ).alias("occur_money_add_tax"),
+        sum(
+            col("t1.occur_money") * coalesce(col("e.para_value"), lit(0))
+        ).alias("occur_money_risk_fund")
+    ).fillna(0)
+
+    df_tmp_3 = tmp.alias("t").join(
+        tmp1.alias("t1"),
+        col("t.fund_account_id") == col("t1.fund_account_id"),
+        "left"
     ).select(
-        col("t.busi_date").alias("busi_date"),
-        col("t.fund_account_id").alias("fund_account_id"),
+        col("t.fund_account_id"),
         (
                 col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))
         ).alias("market_ret_reduce"),
         (
-                (col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))) /
-                (1 + coalesce(col("c.para_value"), lit(0)))
+                col("t.market_reduct_after_tax") - coalesce(col("t1.occur_money_after_tax"), lit(0))
         ).alias("market_ret_reduce_after_tax"),
         (
-                (col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))) *
-                coalesce(col("d.para_value"), lit(0))
+                col("t.market_reduct_add_tax") - coalesce(col("t1.occur_money_add_tax"), lit(0))
         ).alias("market_ret_add_tax"),
         (
-                (col("t.MARKET_REDUCT") - coalesce(col("t1.occur_money"), lit(0))) *
-                coalesce(col("e.para_value"), lit(0))
+                col("t.market_reduct_risk_fund") - coalesce(col("t1.occur_money_risk_fund"), lit(0))
         ).alias("market_ret_risk_fund")
-    ).groupBy(
-        col("fund_account_id").alias("fund_account_id")
-    ).agg(
-        sum("market_ret_reduce").alias("market_ret_reduce"),
-        sum("market_ret_reduce_after_tax").alias("market_ret_reduce_after_tax"),
-        sum("market_ret_add_tax").alias("market_ret_add_tax"),
-        sum("market_ret_risk_fund").alias("market_ret_risk_fund")
-    ).fillna(0)
+    )
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_3:{df_tmp_3.count()}", "green"))
+
 
     # 自然日均可用资金*年利率*统计周期内自然天数/年天数——资金对账表对应数据+系统内维护的年利率计算得到
+    # 固定按365天计算，不分平年闰年
     logger.info(to_color_str("开始计算自然日均可用资金", "green"))
-    df_tmp_4 = df_sett.alias("t").join(
+
+    tmp_date = spark.table("ddw.t_cockpit_date_nature").filter(
+        col("n_busi_date").between(v_lx_begin_date, v_lx_end_date)
+    ).cache()
+
+    df_tmp_4 = spark.table("edw.h15_client_sett").alias("t").filter(
+        col("t.busi_date").between(v_lx_begin_date_before, v_lx_end_date)
+    ).join(
         df_fund_account.alias("t2"),
         col("t.fund_account_id") == col("t2.fund_account_id"),
         "left"
@@ -333,13 +525,13 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
             sum("t.rights") -
             sum(
                 when(
-                    col("t.impawn_money") > col("t.margin"),
+                    col("t.impawn_money") > col("t.market_margin"),
                     col("t.impawn_money")
-                ).otherwise(col("t.margin"))
+                ).otherwise(col("t.market_margin"))
             )
         ).alias("interest_base")
     ).fillna(0).alias("t").join(
-        spark.table("ddw.t_cockpit_date_nature").alias("b"),
+        tmp_date.alias("b"),
         col("t.busi_date") == col("b.busi_date"),
         "inner"
     ).join(
@@ -349,12 +541,15 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         (col("c.fee_type") == "1001"),
         "left"
     ).groupBy(
-        col("t.busi_date").alias("busi_date"),
+        col("b.N_busi_date").alias("busi_date"),
         col("t.fund_account_id").alias("fund_account_id")
     ).agg(
         sum("t.interest_base").alias("interest_base"),
-        (sum(col("t.interest_base") * coalesce(col("c.para_value"), lit(0))) / 360).alias("interest_income")
+        (sum(col("t.interest_base") * coalesce(col("c.para_value"), lit(0))) / 365).alias("interest_income")
     ).fillna(0)
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_4:{df_tmp_4.count()}", "green"))
 
     # 利息收入
     # 利息收入_不含税
@@ -398,6 +593,9 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         sum("t.interest_base").alias("avg_open_pre_nature")
     ).fillna(0)
 
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_5:{df_tmp_5.count()}", "green"))
+
     # 资金账号相关数据：
     # 软件使用费
     # 留存手续费
@@ -406,15 +604,15 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
     # 留存_增值税及附加
     # 留存_风险金
     # 利息积数
-    # 客户结息
-    # 客户结息_不含税
-    # 客户结息_增值税及附加
-    # 客户结息_风险金
+    # 客户结息                 修改逻辑 改成取资金类型为A032  20241121
+    # 客户结息_不含税          修改逻辑 改成取资金类型为A031  20241121
+    # 客户结息_增值税及附加    修改逻辑 改成取资金类型为A031  20241121
+    # 客户结息_风险金          修改逻辑 改成取资金类型为A031  20241121
     # 其他收入
     # 其他收入_不含税
     # 其他收入增值税及附加
     # 其他收入风险金
-    # 客户交返
+    # 客户交返                 修改逻辑 改成取资金类型为A031  20241121
     # 客户手续费返还 = 保留字段，目前值为0
     logger.info(to_color_str("开始计算资金账号相关数据", "green"))
     df_tmp_6 = df_investor_value.alias("t").join(
@@ -453,17 +651,87 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum(col("t.subsistence_fee_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("remain_transfee_add_tax"),
         round(sum(col("t.subsistence_fee_amt") * coalesce(col("e.para_value"), lit(0))).cast("decimal(16,4)"), 2).alias("remain_risk_fund"),
         round(sum("t.calint_amt"), 2).alias("interest_base"),
-        round(sum("t.i_int_amt"), 2).alias("client_interest_settlement"),
-        round(sum(col("t.i_int_amt") / (lit(1) + coalesce(col("c.para_value"), lit(0)))), 2).alias("client_interest_after_tax"),
-        round(sum(col("t.i_int_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("client_interest_add_tax"),
-        round(sum(col("t.i_int_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("client_interest_risk_fund"),
+        # round(sum("t.i_int_amt"), 2).alias("client_interest_settlement"),
+        # round(sum(col("t.i_int_amt") / (lit(1) + coalesce(col("c.para_value"), lit(0)))), 2).alias("client_interest_after_tax"),
+        # round(sum(col("t.i_int_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("client_interest_add_tax"),
+        # round(sum(col("t.i_int_amt") * coalesce(col("e.para_value"), lit(0))), 2).alias("client_interest_risk_fund"),
+        lit(0).alias("client_interest_settlement"),
+        lit(0).alias("client_interest_after_tax"),
+        lit(0).alias("client_interest_add_tax"),
+        lit(0).alias("client_interest_risk_fund"),
         round(sum("t.oth_amt"), 2).alias("other_income"),
         round(sum(col("t.oth_amt") / (1 + coalesce(coalesce(col("c.para_value"), lit(0)), lit(0)))), 2).alias("other_income_after_tax"),
         round(sum(col("t.oth_amt") * coalesce(col("d.para_value"), lit(0))), 2).alias("other_income_add_tax"),
         round(sum(col("t.oth_amt") * coalesce(col("e.para_value"), lit(0)))).alias("other_income_risk_fund"),
-        round(sum("t.i_exchangeret_amt"), 2).alias("market_ret_client"),
+        # round(sum("t.i_exchangeret_amt"), 2).alias("market_ret_client"),
+        lit(0).alias("market_ret_client"),  # 后面更新
         lit(0).alias("transfee_reward_client")
     ).fillna(0)
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_6:{df_tmp_6.count()}", "green"))
+
+    # 更新数据  20241121
+    # 客户结息
+    # 客户结息_不含税
+    # 客户结息_增值税及附加
+    # 客户结息_风险金
+    # 客户交返
+
+    # 这里不需要更新上面的df_tmp_6
+
+    df_y = df_tmp_2.alias("t").join(
+        df_fund_account.alias("t2"),
+        col("t.fund_account_id") == col("t2.fund_account_id"),
+        "left"
+    ).join(
+        df_oa_rela.alias("x"),
+        col("t2.branch_id") == col("x.ctp_branch_id"),
+        "inner"
+    ).join(
+        df_202.alias("c"),
+        (col("c.branch_id").contains(col("x.oa_branch_id"))) &
+        (col("c.fee_type") == "1004") &
+        (col("t.busi_date").between(col("c.begin_date"), col("c.end_date"))),
+        "left"
+    ).join(
+        df_202.alias("d"),
+        (col("d.branch_id").contains(col("x.oa_branch_id"))) &
+        (col("d.fee_type") == "1005") &
+        (col("t.busi_date").between(col("d.begin_date"), col("d.end_date"))),
+        "left"
+    ).join(
+        df_202.alias("e"),
+        (col("e.branch_id").contains(col("x.oa_branch_id"))) &
+        (col("e.fee_type") == "1002") &
+        (col("t.busi_date").between(col("e.begin_date"), col("e.end_date"))),
+        "left"
+    ).groupBy(
+        col("t.fund_account_id").alias("fund_account_id")
+    ).agg(
+        sum("t.CLIENT_INTEREST_SETTLEMENT").alias("client_interest_settlement"),
+        sum(col("t.CLIENT_INTEREST_SETTLEMENT") / (1 + coalesce(col("c.para_value"), lit(0)))).alias("client_interest_after_tax"),
+        sum(col("t.CLIENT_INTEREST_SETTLEMENT") * coalesce(col("d.para_value"), lit(0))).alias("client_interest_add_tax"),
+        sum(col("t.CLIENT_INTEREST_SETTLEMENT") * coalesce(col("e.para_value"), lit(0))).alias("client_interest_risk_fund"),
+        sum("t.occur_money").alias("market_ret_client")
+    ).fillna(0)
+
+    df_tmp_6 = update_dataframe(
+        df_to_update=df_tmp_6,
+        df_use_me=df_y,
+        join_columns=["fund_account_id"],
+        update_columns=[
+            "client_interest_settlement",
+            "client_interest_after_tax",
+            "client_interest_add_tax",
+            "client_interest_risk_fund",
+            "market_ret_client"
+        ]
+    )
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_6:{df_tmp_6.count()}", "green"))
+
 
     """
     净利息收入（扣客户结息）=利息收入-客户结息   NET_INTEREST_REDUCE
@@ -496,6 +764,9 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
                 col("t.accrued_interest_risk_fund") - col("t1.client_interest_risk_fund")
         ).alias("interest_risk_fund")
     ).fillna(0)
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_7:{df_tmp_7.count()}", "green"))
 
     """
     业务人员相关数据：
@@ -724,47 +995,176 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         round(sum(col("a.i_oth_amt") * coalesce(col("f.para_value"), lit(0))), 2).alias("other_pay_risk_fund")  # 其他支出风险金
     ).fillna(0)
 
+    if is_count == "True":
+        logger.info(to_color_str(f"df_tmp_8:{df_tmp_8.count()}", "green"))
+        sum_cs_person_rebate = df_tmp_8.agg(sum("cs_person_rebate")).collect()[0][0]
+        logger.info(to_color_str(f"sum_cs_person_rebate:{sum_cs_person_rebate}", "green"))
+
+        df_tmp_8.select(
+            "oa_broker_id",
+            "rela_type",
+            "fund_account_id",
+            "cs_person_rebate",
+        ).show(2)
+
     logger.info(to_color_str("基础数据计算结束", "green"))
 
     # 初始化数据
     logger.info(to_color_str("开始初始化数据", "green"))
-    df_result = df_investor_value.alias("a").join(
-        df_investor.alias("b"),
-        col("a.investor_id") == col("b.investor_id"),
-        "inner"
+
+    df_result_1 = spark.table('ods.T_DS_CRM_BROKER_INVESTOR_RELA').alias('a').join(
+        spark.table('ods.t_ds_crm_broker').alias('b'),
+        col('a.broker_id') == col('b.broker_id'),
+        'inner'
     ).join(
-        df_org.alias("c"),
-        col("b.orig_department_id") == col("c.department_id"),
-        "inner"
+        spark.table('ods.t_ds_mdp_dept00').alias('f'),
+        col('b.department_id') == col('f.chdeptcode'),
+        'inner'
     ).join(
-        df_brokerdata_detail.alias("a2"),
-        (col("a.date_dt") == col("a2.tx_dt")) &
-        (col("a.investor_id") == col("a2.investor_id")),
-        "left"
+        spark.table('ods.t_ds_dc_investor').alias('c'),
+        col('a.investor_id') == col('c.investor_id'),
+        'inner'
+    ).join(
+        spark.table('ods.t_ds_dc_org').alias('d'),
+        col('c.orig_department_id') == col('d.department_id'),
+        'inner'
+    ).join(
+        df_fund_account.alias('x'),
+        col('a.investor_id') == col('x.fund_account_id'),
+        'left'
+    ).filter(
+        (regexp_replace(col('a.end_dt'), '-', '') >= v_begin_busi_date) &
+        (regexp_replace(col('a.st_dt'), '-', '') <= v_end_busi_date) &
+        (col('x.isactive') == '0') &
+        (col('a.rela_sts') == 'A')
     ).select(
-        lit(v_busi_month).alias("month_id"),
-        col("c.department_id").alias("branch_id"),
-        col("c.department_nam").alias("branch_name"),
-        coalesce(col("a2.staff_id"), lit("-")).alias("oa_broker_id"),
-        coalesce(col("a2.staff_nam"), lit("-")).alias("oa_broker_name"),
+        lit(v_busi_month).alias('month_id'),
+        col('d.department_id').alias('branch_id'),
+        col('d.department_nam').alias('branch_name'),
+        coalesce(col('a.broker_id'), lit('-')).alias('oa_broker_id'),
+        coalesce(col('b.broker_nam'), lit('-')).alias('oa_broker_name'),
         when(
-            col("a2.srela_typ") == "301", "居间关系"
+            col('a.broker_rela_typ') == '301', '居间关系'
         ).when(
-            col("a2.srela_typ") == "001", "开发关系"
+            col('a.broker_rela_typ') == '001', '开发关系'
         ).when(
-            col("a2.srela_typ") == "002", "服务关系"
+            col('a.broker_rela_typ') == '002', '服务关系'
         ).when(
-            col("a2.srela_typ") == "003", "维护关系"
-        ).otherwise("-").alias("rela_type"),
-        coalesce(col("a2.Broker_Nam"), lit("-")).alias("csperson_name"),
-        col("a.investor_id").alias("fund_account_id"),
-        col("b.investor_nam").alias("client_name")
-    ).distinct().withColumn(
-        "is_main",
+            col('a.broker_rela_typ') == '003', '维护关系'
+        ).otherwise('-').alias('rela_type'),
+        lit('').alias('cs_person_name'),
+        col('a.investor_id').alias('fund_account_id'),
+        col('c.investor_nam').alias('client_name')
+    ).withColumn(
+        'is_main',
         row_number().over(
-            Window.partitionBy("fund_account_id").orderBy("fund_account_id")
+            Window.partitionBy('fund_account_id').orderBy(col('fund_account_id').asc())
         )
     )
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_result_1:{df_result_1.count()}", "green"))
+
+    df_result_2 = spark.table('ods.T_DS_CRM_BROKER_INVESTOR_RELA').alias('a').join(
+        spark.table('ods.t_ds_crm_broker').alias('b'),
+        col('a.broker_id') == col('b.broker_id'),
+        'inner'
+    ).join(
+        spark.table('ods.t_ds_mdp_dept00').alias('f'),
+        col('b.department_id') == col('f.chdeptcode'),
+        'inner'
+    ).join(
+        spark.table('ods.t_ds_dc_investor').alias('c'),
+        col('a.investor_id') == col('c.investor_id'),
+        'inner'
+    ).join(
+        spark.table('ods.t_ds_dc_org').alias('d'),
+        col('c.orig_department_id') == col('d.department_id'),
+        'inner'
+    ).join(
+        df_fund_account.alias('x'),
+        col('a.investor_id') == col('x.fund_account_id'),
+        'left'
+    ).filter(
+        (regexp_replace(col('a.end_dt'), '-', '') >= v_begin_busi_date) &
+        (regexp_replace(col('a.st_dt'), '-', '') <= v_end_busi_date) &
+        (col('x.isactive') == '3') &
+        (
+                (col('x.close_date').between(v_begin_busi_date, v_end_date)) |
+                (col('x.close_date') >= v_end_busi_date)
+        ) &
+        (col('a.rela_sts') == 'A')
+    ).select(
+        lit(v_busi_month).alias('month_id'),
+        col('d.department_id').alias('branch_id'),
+        col('d.department_nam').alias('branch_name'),
+        coalesce(col('a.broker_id'), lit('-')).alias('oa_broker_id'),
+        coalesce(col('b.broker_nam'), lit('-')).alias('oa_broker_name'),
+        when(
+            col('a.broker_rela_typ') == '301', '居间关系'
+        ).when(
+            col('a.broker_rela_typ') == '001', '开发关系'
+        ).when(
+            col('a.broker_rela_typ') == '002', '服务关系'
+        ).when(
+            col('a.broker_rela_typ') == '003', '维护关系'
+        ).otherwise('-').alias('rela_type'),
+        lit('').alias('cs_person_name'),
+        col('a.investor_id').alias('fund_account_id'),
+        col('c.investor_nam').alias('client_name')
+    ).withColumn(
+        'is_main',
+        row_number().over(
+            Window.partitionBy('fund_account_id').orderBy(col('fund_account_id').asc())
+        )
+    )
+
+    if is_count == "True":
+        logger.info(to_color_str(f"df_result_2:{df_result_2.count()}", "green"))
+
+    df_result = df_result_1.union(df_result_2)
+
+
+
+
+
+    # df_result = df_investor_value.alias("a").join(
+    #     df_investor.alias("b"),
+    #     col("a.investor_id") == col("b.investor_id"),
+    #     "inner"
+    # ).join(
+    #     df_org.alias("c"),
+    #     col("b.orig_department_id") == col("c.department_id"),
+    #     "inner"
+    # ).join(
+    #     df_brokerdata_detail.alias("a2"),
+    #     (col("a.date_dt") == col("a2.tx_dt")) &
+    #     (col("a.investor_id") == col("a2.investor_id")),
+    #     "left"
+    # ).select(
+    #     lit(v_busi_month).alias("month_id"),
+    #     col("c.department_id").alias("branch_id"),
+    #     col("c.department_nam").alias("branch_name"),
+    #     coalesce(col("a2.staff_id"), lit("-")).alias("oa_broker_id"),
+    #     coalesce(col("a2.staff_nam"), lit("-")).alias("oa_broker_name"),
+    #     when(
+    #         col("a2.srela_typ") == "301", "居间关系"
+    #     ).when(
+    #         col("a2.srela_typ") == "001", "开发关系"
+    #     ).when(
+    #         col("a2.srela_typ") == "002", "服务关系"
+    #     ).when(
+    #         col("a2.srela_typ") == "003", "维护关系"
+    #     ).otherwise("-").alias("rela_type"),
+    #     coalesce(col("a2.Broker_Nam"), lit("-")).alias("csperson_name"),
+    #     col("a.investor_id").alias("fund_account_id"),
+    #     col("b.investor_nam").alias("client_name")
+    # ).distinct().withColumn(
+    #     "is_main",
+    #     row_number().over(
+    #         Window.partitionBy("fund_account_id").orderBy("fund_account_id")
+    #     )
+    # )
 
     # df_result不具备ddw.t_cockpit_client_revenue完整的表结构,需要读取ddw.t_cockpit_client_revenue的schema
 
@@ -1257,12 +1657,33 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         ).alias("total_staff_expend_risk_fund")
     )
 
+    if is_count == "True":
+        sum_csperson_rebate = df_merge_source.select("csperson_rebate").agg(sum("csperson_rebate")).collect()[0][0]
+        logger.info(to_color_str(f"df_merge_source的sum_csperson_rebate:{sum_csperson_rebate}", "green"))
+        # 打印df_result的所有的列名
+        logger.info(to_color_str(f"df_result的所有的列名:{df_result.columns}", "green"))
+
+    if is_count == "True":
+        df_result.select(
+            "fund_account_id",
+            "oa_broker_id",
+            "rela_type",
+            "csperson_rebate",
+        ).show(2)
+        df_merge_source.select(
+            "fund_account_id",
+            "oa_broker_id",
+            "rela_type",
+            "csperson_rebate",
+        ).show(2)
+
     df_result = update_dataframe(
         df_to_update=df_result,
         df_use_me=df_merge_source,
         join_columns=["fund_account_id", "oa_broker_id", "rela_type"],
         update_columns=[
-            "csperson_rebate", "csperson_rebate_after_tax",
+            "csperson_rebate",
+            "csperson_rebate_after_tax",
             "csperson_remain_add_tax", "csperson_remain_risk_fund",
             "csperson_ret", "csperson_ret_after_tax",
             "csperson_ret_add_tax", "csperson_ret_risk_fund",
@@ -1291,6 +1712,10 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
         ]
     )
 
+    if is_count == "True":
+        sum_csperson_rebate = df_result.select("csperson_rebate").agg(sum("csperson_rebate")).collect()[0][0]
+        logger.info(to_color_str(f"df_result的sum_csperson_rebate:{sum_csperson_rebate}", "green"))
+
     # 净贡献 = 经纪业务总收入 + 其他收入 - 软件费 - 投资者保障基金 - 客户总返还 - 居间总支出 - IB总支出 - 员工总支出
     logger.info(to_color_str("开始计算净贡献", "green"))
     df_result = df_result.withColumn(
@@ -1307,9 +1732,39 @@ def p_cockpit_client_revenue(spark: SparkSession, busi_date: str):
 
     logger.info(to_color_str("全部计算结束,开始写入hive", "green"))
 
-    if config.get("log").get("is_count") == "true":
+    if is_count == "True":
+        sum_csperson_rebate = df_result.select("csperson_rebate").agg(sum("csperson_rebate")).collect()[0][0]
+        logger.info(to_color_str(f"df_result的sum_csperson_rebate:{sum_csperson_rebate}", "green"))
+
+    # return_to_hive(
+    #     spark=spark,
+    #     df_result=df_result,
+    #     target_table="ddw.t_cockpit_client_revenue",
+    #     insert_mode="overwrite"
+    # )
+
+    # 更新 净留存手续费 20241121
+    logger.info(to_color_str("更新净留存手续费", "green"))
+    df_y = df_tmp_brp_06008_clear.groupBy(
+        col("fund_account_id")
+    ).agg(
+        sum(col("clear_remain_transfee")).alias("clear_remain_transfee")
+    )
+
+    df_result = update_dataframe(
+        df_to_update=df_result,
+        df_use_me=df_y,
+        join_columns=["fund_account_id"],
+        update_columns=[
+            "clear_remain_transfee"
+        ],
+    )
+
+    if is_count == "True":
+        sum_csperson_rebate = df_result.select("csperson_rebate").agg(sum("csperson_rebate")).collect()[0][0]
+        logger.info(to_color_str(f"df_result的sum_csperson_rebate:{sum_csperson_rebate}", "green"))
         count = df_result.count()
-        logger.info(to_color_str("本次写入总条数为:{}".format(count), "green"))
+        logger.info(to_color_str("df_result本次写入总条数为:{}".format(count), "green"))
 
     return_to_hive(
         spark=spark,

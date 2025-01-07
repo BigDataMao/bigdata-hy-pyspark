@@ -22,29 +22,48 @@ create or replace procedure cf_busimg.P_COCKPIT_CLIENT_REVENUE(i_busi_date   in 
   v_error_code INTEGER;
   v_userException EXCEPTION;
 
-  v_busi_month    varchar2(6); --月份
-  v_begin_date    varchar2(8); --开始日期
-  v_end_date      varchar2(8); --结束日期
-  v_trade_days    number; --交易日天数
-  v_end_busi_date varchar2(8); --当月月底日期
+  v_busi_month      varchar2(6); --月份
+  v_begin_date      varchar2(8); --开始日期
+  v_end_date        varchar2(8); --结束日期
+  v_trade_days      number; --交易日天数
+  v_begin_busi_date varchar2(8); --当月月初日期
+  v_end_busi_date   varchar2(8); --当月月底日期
 
   v_ds_begin_busi_date      varchar2(10); --德所开始日期
   v_last_ds_begin_busi_date varchar2(10); --德所上个月开始日期
   v_ds_end_busi_date        varchar2(10); --德所结束日期
   v_last_ds_end_busi_date   varchar2(10); --德所上个月结束日期
 
-begin
-  v_busi_month         := substr(i_busi_date, 1, 6);
-  v_ds_begin_busi_date := substr(i_busi_date, 1, 4) || '-' ||
-                          substr(i_busi_date, 5, 2) || '-01';
+  --1.利息收入的统计时间区间要调整成上月21~本月20，比如9月的统计周期为8.21~9.20
+  v_lx_begin_date        varchar2(8); --利息计算开始日期
+  v_lx_trade_date        varchar2(8); --利息计算开始日期-交易日
+  v_lx_end_date          varchar2(8); --利息计算结束日期
+  v_lx_begin_date_before varchar2(8); --利息计算开始日期上个交易日
 
+begin
+  v_busi_month              := substr(i_busi_date, 1, 6);
+  v_ds_begin_busi_date      := substr(i_busi_date, 1, 4) || '-' ||
+                               substr(i_busi_date, 5, 2) || '-01';
+  v_begin_busi_date         := v_busi_month || '01';
   v_last_ds_begin_busi_date := to_char(ADD_MONTHS(to_date(v_ds_begin_busi_date,
                                                           'YYYY-MM-DD'),
                                                   -1),
                                        'YYYY-MM-DD');
+  v_lx_begin_date           := to_char(ADD_MONTHS(to_date(i_busi_date,
+                                                          'YYYY-MM-DD'),
+                                                  -1),
+                                       'yyyymm') || '21';
+  v_lx_end_date             := v_busi_month || '20';
 
-  select min(t.busi_date), max(t.busi_date),count(1)
-    into v_begin_date, v_end_date,v_trade_days
+  if cf_busimg.fc_trade_date_check(v_lx_begin_date) = 0 then
+    v_lx_trade_date        := wolf.f_get_tradedate(v_lx_begin_date, 1);
+    v_lx_begin_date_before := wolf.f_get_tradedate(v_lx_trade_date, -1);
+  else
+    v_lx_begin_date_before := v_lx_begin_date;
+  end if;
+
+  select min(t.busi_date), max(t.busi_date), count(1)
+    into v_begin_date, v_end_date, v_trade_days
     from cf_sett.t_pub_date t
    where substr(t.busi_date, 1, 6) = v_busi_month
      and t.market_no = '1'
@@ -66,6 +85,21 @@ begin
                                      'YYYY-MM-DD');
 
   ----------------------------基础数据处理begin----------------------------------------------
+
+  --净留存手续费取德索数据 20241121
+  execute immediate 'truncate table cf_busimg.tmp_brp_06008_clear';
+  insert into cf_busimg.tmp_brp_06008_clear
+    (busi_date, fund_account_id, clear_remain_transfee)
+    select REPLACE(a.tx_dt, '-', '') AS BUSI_DATE,
+           a.INVESTOR_ID AS FUND_ACCOUNT_ID,
+           sum(subsistence_fee_amt - fd_amt - return_amt -
+               nvl(a.soft_amt, 0)) AS CLEAR_REMAIN_TRANSFEE
+      from CTP63.T_DS_ADM$CUST_01 a
+
+     where REPLACE(a.tx_dt, '-', '') between v_begin_date and v_end_date
+     group by REPLACE(a.tx_dt, '-', ''), a.INVESTOR_ID;
+  commit;
+
   /*
   交易所返还收入
   减免返还收入”取自：crm系统的“内核表-投资者交易所返还计算-二次开发”字段“交易所减收”；
@@ -180,7 +214,38 @@ begin
                               0
                            end,
                            0),
-                       4)) as investor_ret_amt
+                       4)) as investor_ret_amt,
+             SUM(ROUND(CASE
+                         WHEN A.TX_DT <= v_last_ds_end_busi_date THEN
+                          RET_FEE_AMT_DCE11A
+                         ELSE
+                          0
+                       END,
+                       4)) RET_FEE_AMT_DCE11A --需增加
+            ,
+             SUM(ROUND(CASE
+                         WHEN A.TX_DT <= v_last_ds_end_busi_date THEN
+                          RET_FEE_AMT_GFEX
+                         ELSE
+                          0
+                       END,
+                       4)) RET_FEE_AMT_GFEX --需增加
+            ,
+             SUM(ROUND(CASE
+                         WHEN A.TX_DT <= v_last_ds_end_busi_date THEN
+                          RET_FEE_AMT_GFEX2
+                         ELSE
+                          0
+                       END,
+                       4)) RET_FEE_AMT_GFEX2 --需增加
+            ,
+             SUM(ROUND(CASE
+                         WHEN A.TX_DT <= v_last_ds_end_busi_date THEN
+                          A.RET_FEE_AMT_CFFEX202206
+                         ELSE
+                          0
+                       END,
+                       4)) RET_FEE_AMT_CFFEX202206 --需增加
         from CTP63.T_DS_RET_EXCHANGE_RETFEE2 a
        inner join CTP63.T_DS_DC_ORG b
           on a.orig_department_id = b.department_id
@@ -193,16 +258,18 @@ begin
     select a.busi_date,
            a.fund_account_id,
            RET_FEE_AMT + RET_FEE_AMT_czce + RET_FEE_AMT_dce +
-           RET_FEE_AMT_cffex + RET_FEE_AMT_cffex2021 + RET_FEE_AMT_shfe +
-           RET_FEE_AMT_shfe1 + RET_FEE_AMT_dce1 + RET_FEE_AMT_dce2 +
-           RET_FEE_AMT_dce31 + RET_FEE_AMT_dce32 + RET_FEE_AMT_dce33 as market_reduct --交易所减收
+            RET_FEE_AMT_cffex + RET_FEE_AMT_cffex2021
+           --+ RET_FEE_AMT_shfe +RET_FEE_AMT_shfe1 注释掉暂时
+            + RET_FEE_AMT_dce11a + ret_fee_amt_gfex + ret_fee_amt_gfex2 +
+            ret_fee_amt_cffex202206 --需增加
+            + RET_FEE_AMT_dce1 + RET_FEE_AMT_dce2 + RET_FEE_AMT_dce31 +
+            RET_FEE_AMT_dce32 + RET_FEE_AMT_dce33 as market_reduct --交易所减收
       from (select a.fund_account_id,
                    a.busi_date,
                    sum(EXCHANGE_TXFEE_AMT) EXCHANGE_TXFEE_AMT,
                    sum(RET_FEE_AMT) RET_FEE_AMT,
                    sum(RET_FEE_AMT_czce) RET_FEE_AMT_czce,
                    sum(RET_FEE_AMT_dce) RET_FEE_AMT_dce, --大连近月
-
                    sum(RET_FEE_AMT_cffex) RET_FEE_AMT_cffex,
                    sum(RET_FEE_AMT_cffex2021) RET_FEE_AMT_cffex2021,
                    sum(RET_FEE_AMT_dce31) RET_FEE_AMT_dce31,
@@ -212,6 +279,10 @@ begin
                    sum(round(RET_FEE_AMT_dce2, 4)) RET_FEE_AMT_dce2,
                    sum(round(RET_FEE_AMT_shfe, 4)) RET_FEE_AMT_shfe,
                    sum(round(RET_FEE_AMT_shfe1, 4)) RET_FEE_AMT_shfe1,
+                   sum(round(RET_FEE_AMT_dce11a, 4)) RET_FEE_AMT_dce11a, --需增加
+                   sum(round(ret_fee_amt_gfex, 4)) ret_fee_amt_gfex, --需增加
+                   sum(round(ret_fee_amt_gfex2, 4)) ret_fee_amt_gfex2, --需增加
+                   sum(ret_fee_amt_cffex202206) ret_fee_amt_cffex202206, --需增加
                    sum(investor_ret_amt) investor_ret_amt,
                    1 order_seq
               from tmp a
@@ -221,14 +292,27 @@ begin
   commit;
 
   --交易所返还支出
+  --交易所返还支出 改成取 资金类型为A031   20241121
+  --客户结息  改成取 资金类型为A032     20241121
   execute immediate 'truncate table CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_2';
   insert into CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_2
-    (BUSI_DATE, FUND_ACCOUNT_ID, OCCUR_MONEY)
+    (BUSI_DATE, FUND_ACCOUNT_ID, OCCUR_MONEY, CLIENT_INTEREST_SETTLEMENT)
     select t.busi_date,
            t.fund_account_id,
-           sum(t.occur_money) as occur_money
+           sum(CASE
+                 WHEN T.FUND_PROJECTID = 'A031' THEN
+                  t.occur_money
+                 ELSE
+                  0
+               END) as occur_money,
+           sum(CASE
+                 WHEN T.FUND_PROJECTID = 'A032' THEN
+                  t.occur_money
+                 ELSE
+                  0
+               END) as CLIENT_INTEREST_SETTLEMENT
       from CF_SETT.T_FUND_JOUR t
-     where t.fund_type = '3' --公司调整
+     where T.FUND_PROJECTID IN ('A031', 'A032')
        and t.fund_direct = '1' --入金
        and t.busi_date between v_begin_date and v_end_date
      group by t.fund_account_id, t.busi_date;
@@ -243,19 +327,12 @@ begin
      MARKET_RET_ADD_TAX,
      MARKET_RET_RISK_FUND)
     with tmp as
-     (select t.busi_date,
-             t.fund_account_id,
-             (t.MARKET_REDUCT - nvl(t1.OCCUR_MONEY, 0)) as MARKET_RET_REDUCE, --交易所净返还（扣客户交返）
-             (t.MARKET_REDUCT - nvl(t1.OCCUR_MONEY, 0)) /
-             (1 + nvl(c.para_value, 0)) as MARKET_RET_REDUCE_AFTER_TAX, --交易所净返还（扣客户交返）_不含税
-             (t.MARKET_REDUCT - nvl(t1.OCCUR_MONEY, 0)) *
-             nvl(d.para_value, 0) as MARKET_RET_ADD_TAX, --交返增值税及附加
-             (t.MARKET_REDUCT - nvl(t1.OCCUR_MONEY, 0)) *
-             nvl(e.para_value, 0) as MARKET_RET_RISK_FUND --交返风险金
+     (select t.fund_account_id,
+             sum(t.market_reduct) as market_reduct,
+             sum(t.market_reduct / (1 + nvl(c.para_value, 0))) as MARKET_REDUCT_AFTER_TAX,
+             sum(t.market_reduct * nvl(d.para_value, 0)) as market_reduct_ADD_TAX,
+             sum(t.market_reduct * nvl(e.para_value, 0)) as market_reduct_RISK_FUND
         from CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_1 t
-        left join CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_2 t1
-          on t.busi_date = t1.busi_date
-         and t.fund_account_id = t1.fund_account_id
         left join cf_sett.t_fund_account t2
           on t.fund_account_id = t2.fund_account_id
        inner join cf_busimg.t_ctp_branch_oa_rela x
@@ -272,19 +349,45 @@ begin
           on (instr(e.branch_id, x.oa_branch_id) > 0)
          and e.fee_type = '1002' --风险金比例
          and t.busi_date between e.BEGIN_DATE and e.end_date
-
-      )
+       group by t.fund_account_id),
+    tmp1 as
+     (select t1.fund_account_id,
+             sum(t1.occur_money) as occur_money,
+             sum(t1.occur_money / (1 + nvl(c.para_value, 0))) as occur_money_AFTER_TAX,
+             sum(t1.occur_money * nvl(d.para_value, 0)) as occur_money_ADD_TAX,
+             sum(t1.occur_money * nvl(e.para_value, 0)) as occur_money_RISK_FUND
+        from CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_2 t1
+        left join cf_sett.t_fund_account t2
+          on t1.fund_account_id = t2.fund_account_id
+       inner join cf_busimg.t_ctp_branch_oa_rela x
+          on t2.branch_id = x.ctp_branch_id
+        left join CF_BUSIMG.T_COCKPIT_00202 c
+          on (instr(c.branch_id, x.oa_branch_id) > 0)
+         and c.fee_type = '1004' --增值税税率
+         and t1.busi_date between c.BEGIN_DATE and c.end_date
+        left join CF_BUSIMG.T_COCKPIT_00202 d
+          on (instr(d.branch_id, x.oa_branch_id) > 0)
+         and d.fee_type = '1005' --增值税及附加税税率
+         and t1.busi_date between d.BEGIN_DATE and d.end_date
+        left join CF_BUSIMG.T_COCKPIT_00202 e
+          on (instr(e.branch_id, x.oa_branch_id) > 0)
+         and e.fee_type = '1002' --风险金比例
+         and t1.busi_date between e.BEGIN_DATE and e.end_date
+       group by t1.fund_account_id)
     select t.fund_account_id,
-           sum(t.MARKET_RET_REDUCE) as MARKET_RET_REDUCE,
-           sum(t.MARKET_RET_REDUCE_AFTER_TAX) as MARKET_RET_REDUCE_AFTER_TAX,
-           sum(t.MARKET_RET_ADD_TAX) as MARKET_RET_ADD_TAX,
-           sum(t.MARKET_RET_RISK_FUND) as MARKET_RET_RISK_FUND
-      from tmp t
-     group by t.fund_account_id;
+             (t.MARKET_REDUCT - nvl(t1.OCCUR_MONEY, 0)) as MARKET_RET_REDUCE, --交易所净返还（扣客户交返）
+             (t.MARKET_REDUCT_AFTER_TAX - nvl(t1.occur_money_AFTER_TAX, 0)) as MARKET_RET_REDUCE_AFTER_TAX, --交易所净返还（扣客户交返）_不含税
+             (t.market_reduct_ADD_TAX - nvl(t1.occur_money_ADD_TAX, 0)) as MARKET_RET_ADD_TAX, --交返增值税及附加
+             (t.market_reduct_RISK_FUND - nvl(t1.occur_money_RISK_FUND, 0)) as MARKET_RET_RISK_FUND --交返风险金
+        from tmp t
+        left join tmp1 t1
+          on t.fund_account_id = t1.fund_account_id;
+
   commit;
 
   /*
   自然日均可用资金*年利率*统计周期内自然天数/年天数——资金对账表对应数据+系统内维护的年利率计算得到
+  --固定按365天计算，不分平年闰年
   */
   execute immediate 'truncate table CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_4';
   insert into CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_4
@@ -294,30 +397,34 @@ begin
              t.fund_account_id,
              x.oa_branch_id,
              sum(t.rights) - sum(case
-                                   when t.impawn_money > t.margin then
+                                   when t.impawn_money > t.market_margin then
                                     t.impawn_money
                                    else
-                                    t.margin
+                                    t.market_margin
                                  end) as interest_base
         from cf_sett.t_client_sett t
         left join cf_sett.t_fund_account t2
           on t.fund_account_id = t2.fund_account_id
        inner join cf_busimg.t_ctp_branch_oa_rela x
           on t2.branch_id = x.ctp_branch_id
-       where t.busi_date between v_begin_date and v_end_date
-       group by t.busi_date, t.fund_account_id, x.oa_branch_id)
-    select t.busi_date,
+       where t.busi_date between v_lx_begin_date_before and v_lx_end_date
+       group by t.busi_date, t.fund_account_id, x.oa_branch_id),
+    tmp_date as
+     (select b.busi_date, b.n_busi_date
+        from cf_busimg.t_cockpit_date_nature b
+       where b.n_busi_date between v_lx_begin_date and v_lx_end_date)
+    select b.N_busi_date,
            t.fund_account_id,
            sum(t.interest_base) as interest_base,
-           sum(t.interest_base * nvl(c.PARA_VALUE, 0)) / 360 as interest_income
+           sum(t.interest_base * nvl(c.PARA_VALUE, 0)) / 365 as interest_income
       from tmp_client t
-     inner join cf_busimg.t_cockpit_date_nature b
+     inner join tmp_date b
         on t.busi_date = b.busi_date
       left join CF_BUSIMG.T_COCKPIT_00202 c
         on (instr(c.branch_id, t.oa_branch_id) > 0)
        and t.busi_date between c.begin_date and c.end_date
        and c.fee_type = '1001' --利息收入（公司）年利率
-     group by t.busi_date, t.fund_account_id;
+     group by b.N_busi_date, t.fund_account_id;
   commit;
 
   /*
@@ -370,15 +477,15 @@ begin
   留存_增值税及附加
   留存_风险金
   利息积数
-  客户结息
-  客户结息_不含税
-  客户结息_增值税及附加
-  客户结息_风险金
+  客户结息                         修改逻辑 改成取资金类型为A032  20241121
+  客户结息_不含税                  修改逻辑 改成取资金类型为A031  20241121
+  客户结息_增值税及附加            修改逻辑 改成取资金类型为A031  20241121
+  客户结息_风险金                  修改逻辑 改成取资金类型为A031  20241121
   其他收入
   其他收入_不含税
   其他收入增值税及附加
   其他收入风险金
-  客户交返
+  客户交返                         修改逻辑 改成取资金类型为A031  20241121
   客户手续费返还=保留字段，目前值为0
 
   */
@@ -411,17 +518,16 @@ begin
            round(sum(t.subsistence_fee_amt * nvl(d.para_value, 0)), 2) as REMAIN_TRANSFEE_ADD_TAX, --留存增值税及附加
            round(sum(t.subsistence_fee_amt * nvl(e.para_value, 0)), 2) as REMAIN_RISK_FUND, --留存风险金
            round(sum(t.calint_amt), 2) as INTEREST_BASE, --利息积数
-           round(sum(t.i_int_amt), 2) as CLIENT_INTEREST_SETTLEMENT, --客户结息
-           round(sum(t.i_int_amt / (1 + nvl(c.para_value, 0))), 2) as CLIENT_INTEREST_after_tax, --客户结息_不含税
-           round(sum(t.i_int_amt * nvl(d.para_value, 0)), 2) as CLIENT_INTEREST_add_tax, --客户结息_增值税及附加
-           round(sum(t.i_int_amt * nvl(e.para_value, 0)), 2) as CLIENT_INTEREST_risk_fund, --客户结息_风险金
+           0 /*round(sum(t.i_int_amt), 2)*/ as CLIENT_INTEREST_SETTLEMENT, --客户结息
+           0 /*round(sum(t.i_int_amt / (1 + nvl(c.para_value, 0))), 2)*/ as CLIENT_INTEREST_after_tax, --客户结息_不含税
+           0 /*round(sum(t.i_int_amt * nvl(d.para_value, 0)), 2)*/ as CLIENT_INTEREST_add_tax, --客户结息_增值税及附加
+           0 /*round(sum(t.i_int_amt * nvl(e.para_value, 0)), 2)*/ as CLIENT_INTEREST_risk_fund, --客户结息_风险金
            round(sum(t.oth_amt), 2) as OTHER_INCOME, --其他收入
            round(sum(t.oth_amt / (1 + nvl(c.para_value, 0))), 2) as OTHER_INCOME_AFTER_TAX, --其他收入_不含税
            round(sum(t.oth_amt * nvl(d.para_value, 0)), 2) as OTHER_INCOME_ADD_TAX, --其他收入增值税及附加
            round(sum(t.oth_amt * nvl(e.para_value, 0))) as OTHER_INCOME_RISK_FUND, --其他收入风险金
-           round(sum(t.i_exchangeret_amt), 2) as MARKET_RET_CLIENT, --客户交返
+           0 as MARKET_RET_CLIENT, --客户交返  --后面更新  20241121
            0 as TRANSFEE_REWARD_CLIENT --客户手续费返还=保留字段，目前值为0
-
       from CTP63.T_DS_ADM_INVESTOR_VALUE t
      inner join CTP63.T_DS_DC_INVESTOR b
         on t.investor_id = b.investor_id
@@ -442,6 +548,51 @@ begin
      where t.date_dt = v_ds_begin_busi_date
      group by t.investor_id;
   commit;
+
+  /*
+  更新数据 20241121
+  客户结息
+  客户结息_不含税
+  客户结息_增值税及附加
+  客户结息_风险金
+  客户交返
+  */
+  merge into CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_6 a
+  using (select t.fund_account_id,
+                sum(t.CLIENT_INTEREST_SETTLEMENT) as CLIENT_INTEREST_SETTLEMENT,
+                sum(t.CLIENT_INTEREST_SETTLEMENT /
+                    (1 + nvl(c.para_value, 0))) as CLIENT_INTEREST_after_tax,
+                sum(t.CLIENT_INTEREST_SETTLEMENT * nvl(d.para_value, 0)) as CLIENT_INTEREST_add_tax,
+                sum(t.CLIENT_INTEREST_SETTLEMENT * nvl(e.para_value, 0)) as CLIENT_INTEREST_risk_fund,
+                sum(t.occur_money) as MARKET_RET_CLIENT
+           from CF_BUSIMG.TMP_COCKPIT_CLIENT_REVENUE_2 t
+           left join cf_sett.t_fund_account t2
+             on t.fund_account_id = t2.fund_account_id
+          inner join cf_busimg.t_ctp_branch_oa_rela x
+             on t2.branch_id = x.ctp_branch_id
+           left join CF_BUSIMG.T_COCKPIT_00202 c
+             on (instr(c.branch_id, x.oa_branch_id) > 0)
+            and c.fee_type = '1004' --增值税税率
+            and t.busi_date between c.BEGIN_DATE and c.end_date
+           left join CF_BUSIMG.T_COCKPIT_00202 d
+             on (instr(d.branch_id, x.oa_branch_id) > 0)
+            and d.fee_type = '1005' --增值税及附加税税率
+            and t.busi_date between d.BEGIN_DATE and d.end_date
+           left join CF_BUSIMG.T_COCKPIT_00202 e
+             on (instr(e.branch_id, x.oa_branch_id) > 0)
+            and e.fee_type = '1002' --风险金比例
+            and t.busi_date between e.BEGIN_DATE and e.end_date
+          group by t.fund_account_id) y
+  on (a.FUND_ACCOUNT_ID = y.FUND_ACCOUNT_ID)
+  when matched then
+    update
+       set a.CLIENT_INTEREST_SETTLEMENT = y.CLIENT_INTEREST_SETTLEMENT,
+           a.CLIENT_INTEREST_after_tax  = y.CLIENT_INTEREST_after_tax,
+           a.CLIENT_INTEREST_add_tax    = y.CLIENT_INTEREST_add_tax,
+           a.CLIENT_INTEREST_risk_fund  = y.CLIENT_INTEREST_risk_fund,
+           a.MARKET_RET_CLIENT          = y.MARKET_RET_CLIENT;
+  commit;
+
   /*
   净利息收入（扣客户结息）=利息收入-客户结息   NET_INTEREST_REDUCE
   净利息收入（扣客户结息）_不含税  NET_INTEREST_REDUCE_AFTER_TAX
@@ -758,14 +909,14 @@ begin
      CSPERSON_NAME,
      FUND_ACCOUNT_ID,
      CLIENT_NAME,
-     IS_MAIN--是否主资金账号：1为主账号
+     IS_MAIN --是否主资金账号：1为主账号
      )
-    select v_busi_month,
-           c.department_id as BRANCH_ID,
-           c.department_nam as BRANCH_NAME,
-           nvl(a2.staff_id, '-') as OA_BROKER_ID,
-           nvl(a2.staff_nam, '-') as OA_BROKER_NAME,
-           decode(a2.srela_typ,
+    select v_busi_month as MONTH_ID,
+           d.department_id as BRANCH_ID,
+           d.department_nam as BRANCH_NAME,
+           nvl(a.BROKER_ID, '-') as OA_BROKER_ID,
+           nvl(b.broker_nam, '-') as OA_BROKER_NAME,
+           decode(a.BROKER_RELA_TYP,
                   '301',
                   '居间关系',
                   '001',
@@ -774,38 +925,64 @@ begin
                   '服务关系',
                   '003',
                   '维护关系',
-                  '-') as rela_type,
-           nvl(a2.Broker_Nam, '-') as CSPERSON_NAME,
-           a.investor_id as FUND_ACCOUNT_ID,
-           b.investor_nam as CLIENT_NAME,
-           row_number() over(partition by a.investor_id order by a.investor_id asc)   as IS_MAIN
-      from CTP63.T_DS_ADM_INVESTOR_VALUE a
-      join CTP63.T_DS_DC_INVESTOR b
-        on a.investor_id = b.investor_id
-      join CTP63.T_DS_DC_ORG c
-        on b.orig_department_id = c.department_id
-      left JOIN CTP63.T_DS_ADM_BROKERDATA_DETAIL a2
-        on a.date_dt = a2.tx_dt
-       and a.investor_id = a2.investor_id
-       and a2.rec_freq = 'M'
-     where a.date_dt = v_ds_begin_busi_date
-     group by c.department_id,
-              c.department_nam,
-              nvl(a2.staff_id, '-'),
-              nvl(a2.staff_nam, '-'),
-              decode(a2.srela_typ,
-                     '301',
-                     '居间关系',
-                     '001',
-                     '开发关系',
-                     '002',
-                     '服务关系',
-                     '003',
-                     '维护关系',
-                     '-'),
-              nvl(a2.Broker_Nam, '-'),
-              a.investor_id,
-              b.investor_nam;
+                  '-') rela_type,
+           '' as CSPERSON_NAME,
+           a.INVESTOR_ID as FUND_ACCOUNT_ID,
+           c.investor_nam as CLIENT_NAME,
+           row_number() over(partition by a.investor_id order by a.investor_id asc) as IS_MAIN
+      from CTP63.T_DS_CRM_BROKER_INVESTOR_RELA a
+      join CTP63.T_DS_CRM_BROKER b
+        on a.broker_id = b.broker_id
+      join CTP63.T_DS_MDP_DEPT00 f
+        on b.department_id = f.chdeptcode
+      join CTP63.T_DS_DC_INVESTOR c
+        on a.investor_id = c.investor_id
+      join CTP63.T_DS_DC_ORG d
+        on c.orig_department_id = d.department_id
+      left join cf_sett.t_fund_account x
+        on a.investor_id = x.fund_account_id
+     where replace(a.end_dt, '-', '') >= v_begin_busi_date
+       and replace(a.st_dt, '-', '') <= v_end_busi_date
+       and x.isactive = '0' --正常客户，排除销户客户
+       and a.rela_sts = 'A' --关系状态：A:有效，S:停止使用
+    union all
+    select v_busi_month as MONTH_ID,
+           d.department_id as BRANCH_ID,
+           d.department_nam as BRANCH_NAME,
+           nvl(a.BROKER_ID, '-') as OA_BROKER_ID,
+           nvl(b.broker_nam, '-') as OA_BROKER_NAME,
+           decode(a.BROKER_RELA_TYP,
+                  '301',
+                  '居间关系',
+                  '001',
+                  '开发关系',
+                  '002',
+                  '服务关系',
+                  '003',
+                  '维护关系',
+                  '-') rela_type,
+           '' as CSPERSON_NAME,
+           a.INVESTOR_ID as FUND_ACCOUNT_ID,
+           c.investor_nam as CLIENT_NAME,
+           row_number() over(partition by a.investor_id order by a.investor_id asc) as IS_MAIN
+      from CTP63.T_DS_CRM_BROKER_INVESTOR_RELA a
+      join CTP63.T_DS_CRM_BROKER b
+        on a.broker_id = b.broker_id
+      join CTP63.T_DS_MDP_DEPT00 f
+        on b.department_id = f.chdeptcode
+      join CTP63.T_DS_DC_INVESTOR c
+        on a.investor_id = c.investor_id
+      join CTP63.T_DS_DC_ORG d
+        on c.orig_department_id = d.department_id
+      left join cf_sett.t_fund_account x
+        on a.investor_id = x.fund_account_id
+     where replace(a.end_dt, '-', '') >= v_begin_busi_date
+       and replace(a.st_dt, '-', '') <= v_end_busi_date
+       and x.isactive = '3' --销户客户，且销户日期在统计日期之内，或者大于统计结束日期
+       and ((x.close_date between v_begin_busi_date and v_end_date) or
+            x.close_date >= v_end_busi_date)
+       and a.rela_sts = 'A' --关系状态：A:有效，S:停止使用
+    ;
 
   commit;
 
@@ -837,7 +1014,7 @@ begin
                       else
                        0
                     end) as AVG_RIGHTS,
-                sum(t.hold_profit+t.close_profit) as TOTAL_PROFIT,
+                sum(t.hold_profit + t.close_profit) as TOTAL_PROFIT,
 
                 sum(t.transfee + t.delivery_transfee + t.strikefee) as TRANSFEE,
                 sum(t.market_transfee + t.market_delivery_transfee +
@@ -1262,7 +1439,20 @@ begin
                               t.TOTLA_CLIENT_RET - t.TOTAL_CSPER_EXPEND -
                               t.TOTAL_IB_EXPEND - t.TOTAL_STAFF_EXPEND
    where t.month_id = v_busi_month;
-   commit;
+  commit;
+
+  /*
+  更新 净留存手续费 20241121
+  */
+  merge into CF_BUSIMG.T_COCKPIT_CLIENT_REVENUE a
+  using (select t.fund_account_id,
+                sum(t.clear_remain_transfee) as clear_remain_transfee
+           from cf_busimg.tmp_brp_06008_clear t
+          group by t.fund_account_id) y
+  on (a.MONTH_ID = v_busi_month and a.FUND_ACCOUNT_ID = y.FUND_ACCOUNT_ID)
+  when matched then
+    update set a.clear_remain_transfee = y.clear_remain_transfee;
+  commit;
   --------------------------------------------------------------------------------------------------------------
   O_RETURN_CODE := 0;
   O_RETURN_MSG  := '执行成功';
