@@ -38,8 +38,8 @@ BEGIN
      client_name,
      broker_id,
      broker_name,
-     ctp_branch_id,
-     ctp_branch_name,
+     oa_branch_id,
+     oa_branch_name,
      begin_rights,
      end_rights,
      avg_rights,
@@ -51,7 +51,9 @@ BEGIN
      ibzd_income_reate,
      ibzd_interest_clear_income,
      ibzd_market_reduct_income,
-     ibzd_clear_remain_transfee)
+     ibzd_clear_remain_transfee,
+     done_amount,
+     done_money)
     select t.month_id,
            '',
            '',
@@ -59,35 +61,58 @@ BEGIN
            t.client_name,
            t.oa_broker_id,
            t.oa_broker_name,
-           t.branch_id,
-           t.branch_name,
+           b.broker_branch_id,
+           b.broker_branch_name,
            t.yes_rights,
            t.end_rights,
            t.avg_rights,
-           t.remain_transfee,
-           t.ib_rebate + t.ib_ret + t.ib_interest,
-           t.ib_interest / (CASE
-             WHEN a.data_pct = 0 OR a.data_pct IS NULL THEN
+           t.clear_remain_transfee,
+           (nvl(t.NET_INTEREST_REDUCE, 0) - nvl(t.CSPERSON_INTEREST, 0)) *
+           nvl(nvl(a.data_pct, 1), 1) * (case
+             when substr(t.branch_name, 1, 4) = 'SWHY' then
+              0.45
+             else
               1
-             ELSE
-              a.data_pct
-           END),
-           t.ib_ret / (CASE
-             WHEN a.data_pct = 0 OR a.data_pct IS NULL THEN
+           end) + (nvl(t.MARKET_RET_REDUCE, 0) - nvl(t.CSPERSON_RET, 0)) *
+           nvl(a.data_pct, 1) * (case
+             when substr(t.branch_name, 1, 4) = 'SWHY' then
+              0.45
+             else
               1
-             ELSE
-              a.data_pct
-           END),
-           t.ib_rebate / (CASE
-             WHEN a.data_pct = 0 OR a.data_pct IS NULL THEN
+           end) + (nvl(t.clear_remain_transfee, 0) -
+           nvl(t.CSPERSON_REBATE, 0)) * nvl(a.data_pct, 1) * (case
+             when substr(t.branch_name, 1, 4) = 'SWHY' then
+              0.45
+             else
               1
-             ELSE
-              a.data_pct
-           END),
-           a.data_pct,
-           t.ib_interest,
-           t.ib_ret,
-           t.ib_rebate
+           end),
+           nvl(t.NET_INTEREST_REDUCE, 0) - nvl(t.CSPERSON_INTEREST, 0),
+           nvl(t.MARKET_RET_REDUCE, 0) - nvl(t.CSPERSON_RET, 0),
+           nvl(t.clear_remain_transfee, 0) - nvl(t.CSPERSON_REBATE, 0),
+           nvl(a.data_pct, 1),
+           (nvl(t.NET_INTEREST_REDUCE, 0) - nvl(t.CSPERSON_INTEREST, 0)) *
+           nvl(a.data_pct, 1) * (case
+             when substr(t.branch_name, 1, 4) = 'SWHY' then
+              0.45
+             else
+              1
+           end),
+           (nvl(t.MARKET_RET_REDUCE, 0) - nvl(t.CSPERSON_RET, 0)) *
+           nvl(a.data_pct, 1) * (case
+             when substr(t.branch_name, 1, 4) = 'SWHY' then
+              0.45
+             else
+              1
+           end),
+           (nvl(t.clear_remain_transfee, 0) - nvl(t.CSPERSON_REBATE, 0)) *
+           nvl(a.data_pct, 1) * (case
+             when substr(t.branch_name, 1, 4) = 'SWHY' then
+              0.45
+             else
+              1
+           end),
+           t.done_amount,
+           t.done_money
       from CF_BUSIMG.T_COCKPIT_CLIENT_REVENUE t
       left join CTP63.T_DS_CRM_BROKER_INVESTOR_RELA a
         on t.oa_broker_id = a.broker_id
@@ -102,6 +127,8 @@ BEGIN
                                 '003',
                                 '维护关系',
                                 '-')
+     inner join CF_BUSIMG.T_COCKPIT_00110 b
+        on t.oa_broker_id = b.broker_id
      where t.month_id = v_month_id
        and a.broker_id like 'ZD%'
        and a.rela_sts = 'A'
