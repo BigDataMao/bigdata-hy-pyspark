@@ -1,6 +1,6 @@
 create or replace procedure cf_busimg.p_cockpit_00160_data(i_busi_date   in varchar2,
-                                                           o_return_msg  out varchar2, --返回消息
-                                                           o_return_code out integer --返回代码
+                                                           o_return_code out integer, --返回代码
+                                                           o_return_msg  out varchar2 --返回消息
                                                            ) is
   ---------------------------------------------------------------------------------------
   -- copyright              wolf 1.0
@@ -57,8 +57,8 @@ create or replace procedure cf_busimg.p_cockpit_00160_data(i_busi_date   in varc
     select t.month_id,
            a.traceability_dept_id,
            a.traceability_dept,
-           t.ctp_branch_id,
-           t.ctp_branch_name,
+           t.oa_branch_id,
+           t.oa_branch_name,
            a.account_code,
            a.account_name,' || v_sql_text ||
                'to_char(sysdate,''yyyymmdd''),
@@ -78,15 +78,15 @@ create or replace procedure cf_busimg.p_cockpit_00160_data(i_busi_date   in varc
      group by t.month_id,
               a.traceability_dept_id,
               a.traceability_dept,
-              t.ctp_branch_id,
-              t.ctp_branch_name,
+              t.oa_branch_id,
+              t.oa_branch_name,
               a.account_code,
               a.account_name,
               a.func_name,
               c.para_value,
               d.para_value ';
 
-      dbms_output.put_line(v_sql);
+      --dbms_output.put_line(v_sql);
       execute immediate v_sql;
       commit;
     end loop;
